@@ -1,0 +1,55 @@
+
+import type { Paciente } from "../types/paciente";
+
+export const pacientes: Paciente[] = [
+  {
+    id: "pac-001",
+    nombre: "María",
+    apellido: "Morales",
+    email: "maria.morales@example.com",
+    telefono: "900 123 456",
+    especialidadAsignada: "Medicina interna",
+    ultimaCita: "2026-10-10",
+    estado: "activo",
+  },
+  {
+    id: "pac-002",
+    nombre: "Alejandro",
+    apellido: "Ramírez",
+    email: "alejandro.ramirez@example.com",
+    telefono: "900 234 567",
+    especialidadAsignada: "Cardiología",
+    ultimaCita: "2026-10-08",
+    estado: "activo",
+  },
+  {
+    id: "pac-003",
+    nombre: "Lucía",
+    apellido: "Gómez",
+    email: "lucia.gomez@example.com",
+    telefono: "900 345 678",
+    especialidadAsignada: "Dermatología",
+    ultimaCita: "2026-10-05",
+    estado: "en_espera",
+  },
+  {
+    id: "pac-004",
+    nombre: "Javier",
+    apellido: "Valenzuela",
+    email: "javier.valenzuela@example.com",
+    telefono: "900 456 789",
+    especialidadAsignada: "Traumatología",
+    ultimaCita: "2026-09-28",
+    estado: "inactivo",
+  },
+  {
+    id: "pac-005",
+    nombre: "Sofía",
+    apellido: "Benítez",
+    email: "sofia.benitez@example.com",
+    telefono: "900 567 890",
+    especialidadAsignada: "Pediatría",
+    ultimaCita: "2026-10-12",
+    estado: "activo",
+  },
+];
