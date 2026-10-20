@@ -1,117 +1,155 @@
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import type { FormEvent } from "react";
+import axios from "axios";
 
-import BuscadorPacientes from "../components/pacientes/BuscadorPacientes";
-import PacienteRow from "../components/pacientes/PacienteRow";
-
-import { pacientes } from "../data/pacientes";
-
-import type { EstadoPaciente, Paciente } from "../types/paciente";
-
-type FiltroEstado = "Todos" | EstadoPaciente;
+import { api } from "../lib/axios";
+import type {
+  CrearPacienteAPI,
+  PacienteAPI,
+} from "../types/pacienteApi";
 
 export default function PaginaPacientes() {
-  // Estado de la lista y filtros
-  const [pacientesActuales, setPacientesActuales] =
-    useState<Paciente[]>(pacientes);
+  // Datos reales del backend
+  const [pacientes, setPacientes] = useState<PacienteAPI[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState("");
 
+  // Búsqueda
   const [busqueda, setBusqueda] = useState("");
-  const [estadoFiltro, setEstadoFiltro] =
-    useState<FiltroEstado>("Todos");
 
-  // Estado del formulario
+  // Formulario
   const [nombre, setNombre] = useState("");
   const [apellido, setApellido] = useState("");
   const [email, setEmail] = useState("");
-  const [telefono, setTelefono] = useState("");
-  const [especialidadAsignada, setEspecialidadAsignada] =
-    useState("");
+  const [fechaNacimiento, setFechaNacimiento] = useState("");
 
-  const [estadoNuevo, setEstadoNuevo] =
-    useState<EstadoPaciente>("activo");
-
+  const [guardando, setGuardando] = useState(false);
   const [errorFormulario, setErrorFormulario] = useState("");
+  const [mensajeExito, setMensajeExito] = useState("");
 
-  // Filtros combinados: nombre y estado
-  const pacientesFiltrados = pacientesActuales.filter((paciente) => {
+  // Obtener pacientes desde PostgreSQL
+  const cargarPacientes = useCallback(async () => {
+    setCargando(true);
+    setErrorCarga("");
+
+    try {
+      const respuesta = await api.get<PacienteAPI[]>("/pacientes");
+      setPacientes(respuesta.data);
+    } catch {
+      setErrorCarga(
+        "No se pudieron cargar los pacientes desde el servidor."
+      );
+    } finally {
+      setCargando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void cargarPacientes();
+  }, [cargarPacientes]);
+
+  // Buscar por nombre, apellido o email
+  const pacientesFiltrados = pacientes.filter((paciente) => {
     const texto = busqueda.trim().toLowerCase();
 
-    const coincideNombre = paciente.nombre
-      .toLowerCase()
-      .includes(texto);
+    const contenido =
+      `${paciente.nombre} ${paciente.apellido} ${paciente.email}`
+        .toLowerCase();
 
-    const coincideEstado =
-      estadoFiltro === "Todos" ||
-      paciente.estado === estadoFiltro;
-
-    return coincideNombre && coincideEstado;
+    return contenido.includes(texto);
   });
 
-  // Restablecer los filtros
-  function limpiarFiltros() {
-    setBusqueda("");
-    setEstadoFiltro("Todos");
-  }
-
-  // Agregar un paciente
-  function agregarPaciente(
-    evento: React.FormEvent<HTMLFormElement>,
-  ) {
+  // Registrar un paciente real
+  async function agregarPaciente(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
 
-    if (!nombre.trim() || !email.trim()) {
-      setErrorFormulario("Nombre y email son obligatorios.");
+    setErrorFormulario("");
+    setMensajeExito("");
+
+    if (
+      !nombre.trim() ||
+      !apellido.trim() ||
+      !email.trim() ||
+      !fechaNacimiento
+    ) {
+      setErrorFormulario(
+        "Todos los campos son obligatorios."
+      );
       return;
     }
 
-    const nuevoPaciente: Paciente = {
-      id: `pac-${Date.now()}`,
+    const fecha = new Date(`${fechaNacimiento}T12:00:00`);
+
+    if (
+      Number.isNaN(fecha.getTime()) ||
+      fechaNacimiento > new Date().toLocaleDateString("en-CA")
+    ) {
+      setErrorFormulario(
+        "Ingresa una fecha de nacimiento válida."
+      );
+      return;
+    }
+
+    const nuevoPaciente: CrearPacienteAPI = {
       nombre: nombre.trim(),
       apellido: apellido.trim(),
       email: email.trim(),
-      telefono: telefono.trim(),
-      especialidadAsignada: especialidadAsignada.trim(),
-      ultimaCita: new Date().toISOString().slice(0, 10),
-      estado: estadoNuevo,
+      fechaNacimiento,
     };
 
-    // Crear un nuevo array sin modificar el anterior
-    setPacientesActuales((prev) => [...prev, nuevoPaciente]);
+    setGuardando(true);
 
-    // Limpiar el formulario
-    setNombre("");
-    setApellido("");
-    setEmail("");
-    setTelefono("");
-    setEspecialidadAsignada("");
-    setEstadoNuevo("activo");
-    setErrorFormulario("");
+    try {
+      await api.post<PacienteAPI>("/pacientes", nuevoPaciente);
+
+      // Limpiar formulario después de guardar
+      setNombre("");
+      setApellido("");
+      setEmail("");
+      setFechaNacimiento("");
+
+      setMensajeExito(
+        "Paciente registrado correctamente en PostgreSQL."
+      );
+
+      // Consultar nuevamente los datos reales
+      await cargarPacientes();
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        const estado = error.response?.status;
+
+        if (estado === 409) {
+          setErrorFormulario(
+            "Ya existe un paciente con ese correo electrónico."
+          );
+        } else if (estado === 400) {
+          setErrorFormulario(
+            "Los datos enviados no son válidos. Revisa el formulario."
+          );
+        } else {
+          setErrorFormulario(
+            "No se pudo registrar el paciente. Inténtalo nuevamente."
+          );
+        }
+      } else {
+        setErrorFormulario(
+          "Ocurrió un error inesperado."
+        );
+      }
+    } finally {
+      setGuardando(false);
+    }
   }
 
-  // Cambiar el estado de un paciente
-  function cambiarEstadoPaciente(
-    id: string,
-    nuevoEstado: EstadoPaciente,
-  ) {
-    setPacientesActuales((prev) =>
-      prev.map((paciente) =>
-        paciente.id === id
-          ? { ...paciente, estado: nuevoEstado }
-          : paciente,
-      ),
-    );
-  }
-
-  // Eliminar un paciente por su identificador
-  function eliminarPaciente(id: string) {
-    setPacientesActuales((prev) =>
-      prev.filter((paciente) => paciente.id !== id),
-    );
+  function limpiarFiltros() {
+    setBusqueda("");
   }
 
   return (
     <main className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
+        {/* Encabezado */}
         <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-medium text-blue-700">
@@ -123,69 +161,59 @@ export default function PaginaPacientes() {
             </h1>
 
             <p className="mt-2 text-sm text-gray-600">
-              Consulta y seguimiento de pacientes registrados.
+              Consulta y registro de pacientes de la clínica.
             </p>
           </div>
 
           <span className="text-sm text-gray-500">
-            {pacientesFiltrados.length} paciente(s) encontrado(s)
+            {cargando
+              ? "Cargando..."
+              : `${pacientesFiltrados.length} paciente(s) encontrado(s)`}
           </span>
         </header>
 
-        {/* Filtros combinados */}
+        {/* Búsqueda */}
         <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
-          <BuscadorPacientes
-            value={busqueda}
-            onChange={setBusqueda}
-          />
-
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="flex-1">
-              <label
-                htmlFor="filtroEstado"
-                className="mb-1 block text-sm font-medium text-gray-700"
-              >
-                Filtrar por estado
-              </label>
-
-              <select
-                id="filtroEstado"
-                value={estadoFiltro}
-                onChange={(
-                  evento: React.ChangeEvent<HTMLSelectElement>,
-                ) =>
-                  setEstadoFiltro(
-                    evento.target.value as FiltroEstado,
-                  )
-                }
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 sm:max-w-xs"
-              >
-                <option value="Todos">Todos</option>
-                <option value="activo">Activo</option>
-                <option value="inactivo">Inactivo</option>
-                <option value="en_espera">En espera</option>
-              </select>
-            </div>
-
-            <button
-              type="button"
-              onClick={limpiarFiltros}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+          <div>
+            <label
+              htmlFor="busqueda"
+              className="mb-2 block text-sm font-medium text-gray-700"
             >
-              Limpiar filtros
-            </button>
+              Buscar pacientes
+            </label>
+
+            <input
+              id="busqueda"
+              type="search"
+              value={busqueda}
+              onChange={(evento) => setBusqueda(evento.target.value)}
+              placeholder="Buscar por nombre, apellido o correo..."
+              className="w-full rounded-lg border border-gray-300 px-3 py-2"
+            />
           </div>
+
+          <button
+            type="button"
+            onClick={limpiarFiltros}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+          >
+            Limpiar filtros
+          </button>
         </section>
 
-        {/* Formulario para agregar pacientes */}
+        {/* Formulario de registro */}
         <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
-          <h2 className="mb-4 text-xl font-semibold text-gray-900">
-            Agregar paciente
+          <h2 className="mb-2 text-xl font-semibold text-gray-900">
+            Registrar nuevo paciente
           </h2>
 
+          <p className="mb-5 text-sm text-gray-500">
+            Los pacientes registrados se guardarán en PostgreSQL.
+          </p>
+
           <form
-            onSubmit={agregarPaciente}
-            className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+            onSubmit={(evento) => void agregarPaciente(evento)}
+            className="grid grid-cols-1 gap-4 sm:grid-cols-2"
           >
             <div>
               <label
@@ -198,9 +226,9 @@ export default function PaginaPacientes() {
               <input
                 id="nombre"
                 value={nombre}
-                onChange={(
-                  evento: React.ChangeEvent<HTMLInputElement>,
-                ) => setNombre(evento.target.value)}
+                onChange={(evento) => setNombre(evento.target.value)}
+                required
+                disabled={guardando}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2"
                 placeholder="Nombre"
               />
@@ -211,15 +239,15 @@ export default function PaginaPacientes() {
                 htmlFor="apellido"
                 className="mb-1 block text-sm font-medium text-gray-700"
               >
-                Apellido
+                Apellido *
               </label>
 
               <input
                 id="apellido"
                 value={apellido}
-                onChange={(
-                  evento: React.ChangeEvent<HTMLInputElement>,
-                ) => setApellido(evento.target.value)}
+                onChange={(evento) => setApellido(evento.target.value)}
+                required
+                disabled={guardando}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2"
                 placeholder="Apellido"
               />
@@ -230,16 +258,16 @@ export default function PaginaPacientes() {
                 htmlFor="email"
                 className="mb-1 block text-sm font-medium text-gray-700"
               >
-                Email *
+                Correo electrónico *
               </label>
 
               <input
                 id="email"
                 type="email"
                 value={email}
-                onChange={(
-                  evento: React.ChangeEvent<HTMLInputElement>,
-                ) => setEmail(evento.target.value)}
+                onChange={(evento) => setEmail(evento.target.value)}
+                required
+                disabled={guardando}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2"
                 placeholder="correo@ejemplo.com"
               />
@@ -247,101 +275,116 @@ export default function PaginaPacientes() {
 
             <div>
               <label
-                htmlFor="telefono"
+                htmlFor="fechaNacimiento"
                 className="mb-1 block text-sm font-medium text-gray-700"
               >
-                Teléfono
+                Fecha de nacimiento *
               </label>
 
               <input
-                id="telefono"
-                value={telefono}
-                onChange={(
-                  evento: React.ChangeEvent<HTMLInputElement>,
-                ) => setTelefono(evento.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                placeholder="Teléfono"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="especialidad"
-                className="mb-1 block text-sm font-medium text-gray-700"
-              >
-                Especialidad
-              </label>
-
-              <input
-                id="especialidad"
-                value={especialidadAsignada}
-                onChange={(
-                  evento: React.ChangeEvent<HTMLInputElement>,
-                ) => setEspecialidadAsignada(evento.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                placeholder="Especialidad"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="estadoNuevo"
-                className="mb-1 block text-sm font-medium text-gray-700"
-              >
-                Estado
-              </label>
-
-              <select
-                id="estadoNuevo"
-                value={estadoNuevo}
-                onChange={(
-                  evento: React.ChangeEvent<HTMLSelectElement>,
-                ) =>
-                  setEstadoNuevo(
-                    evento.target.value as EstadoPaciente,
-                  )
+                id="fechaNacimiento"
+                type="date"
+                value={fechaNacimiento}
+                onChange={(evento) =>
+                  setFechaNacimiento(evento.target.value)
                 }
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2"
-              >
-                <option value="activo">Activo</option>
-                <option value="inactivo">Inactivo</option>
-                <option value="en_espera">En espera</option>
-              </select>
+                max={new Date().toISOString().slice(0, 10)}
+                required
+                disabled={guardando}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2"
+              />
             </div>
 
             {errorFormulario && (
               <p
                 role="alert"
-                className="text-sm text-red-600 sm:col-span-2 lg:col-span-3"
+                className="text-sm text-red-600 sm:col-span-2"
               >
                 {errorFormulario}
               </p>
             )}
 
-            <div className="sm:col-span-2 lg:col-span-3">
+            {mensajeExito && (
+              <p
+                role="status"
+                className="text-sm font-medium text-green-700 sm:col-span-2"
+              >
+                {mensajeExito}
+              </p>
+            )}
+
+            <div className="sm:col-span-2">
               <button
                 type="submit"
-                className="rounded-lg bg-blue-600 px-5 py-2 font-medium text-white hover:bg-blue-700"
+                disabled={guardando}
+                className="rounded-lg bg-blue-600 px-5 py-2 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Agregar paciente
+                {guardando
+                  ? "Guardando paciente..."
+                  : "Registrar paciente"}
               </button>
             </div>
           </form>
         </section>
 
-        {/* Lista de pacientes filtrados */}
+        {/* Listado de pacientes */}
         <section
           aria-label="Listado de pacientes"
           className="space-y-3"
         >
-          {pacientesFiltrados.length > 0 ? (
+          <h2 className="text-xl font-semibold text-gray-900">
+            Pacientes registrados
+          </h2>
+
+          {cargando ? (
+            <p
+              role="status"
+              className="rounded-xl bg-white p-6 text-center text-gray-600"
+            >
+              Cargando pacientes desde PostgreSQL...
+            </p>
+          ) : errorCarga ? (
+            <div
+              role="alert"
+              className="rounded-xl border border-red-200 bg-red-50 p-6"
+            >
+              <p className="text-red-700">{errorCarga}</p>
+
+              <button
+                type="button"
+                onClick={() => void cargarPacientes()}
+                className="mt-4 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white"
+              >
+                Reintentar
+              </button>
+            </div>
+          ) : pacientesFiltrados.length > 0 ? (
             pacientesFiltrados.map((paciente) => (
-              <PacienteRow
+              <article
                 key={paciente.id}
-                paciente={paciente}
-                onCambiarEstado={cambiarEstadoPaciente}
-                onEliminar={eliminarPaciente}
-              />
+                className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
+              >
+                <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      {paciente.nombre} {paciente.apellido}
+                    </h3>
+
+                    <p className="mt-1 text-sm text-gray-600">
+                      {paciente.email}
+                    </p>
+
+                    <p className="mt-1 text-sm text-gray-500">
+                      Fecha de nacimiento:{" "}
+                      {paciente.fechaNacimiento.slice(0, 10)}
+                    </p>
+                  </div>
+
+                  <span className="self-start rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                    ID: {paciente.id}
+                  </span>
+                </div>
+              </article>
             ))
           ) : (
             <p className="rounded-xl border border-gray-200 bg-white p-6 text-center text-sm text-gray-500">
