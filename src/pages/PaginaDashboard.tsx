@@ -1,57 +1,64 @@
-import { useState } from 'react';
-import MetricCard from '../components/MetricCard';
-import StatusBadge from '../components/StatusBadge';
-import type { Metrica } from '../types';
+
+import { useState } from "react";
+import { Link } from "react-router-dom";
+
+import MetricCard from "../components/MetricCard";
+import StatusBadge from "../components/StatusBadge";
+import type { Metrica } from "../types";
 
 export default function PaginaDashboard() {
   const [pacientes, setPacientes] = useState(128);
   const [mantenimiento, setMantenimiento] = useState(false);
 
+  // Incrementar cantidad de pacientes
   const incrementarPacientes = () => {
     setPacientes((prev) => prev + 1);
   };
 
+  // Disminuir cantidad de pacientes
   const disminuirPacientes = () => {
     setPacientes((prev) => Math.max(0, prev - 1));
   };
 
+  // Métricas del Dashboard
   const metricas: Metrica[] = [
     {
-      id: 'pacientes',
-      titulo: 'Pacientes',
+      id: "pacientes",
+      titulo: "Pacientes",
       valor: pacientes,
-      descripcion: 'Pacientes registrados',
-      tendencia: 'positiva',
-      icono: '👥',
+      descripcion: "Pacientes registrados",
+      tendencia: "positiva",
+      icono: "👥",
     },
     {
-      id: 'citas',
-      titulo: 'Citas Hoy',
+      id: "citas",
+      titulo: "Citas Hoy",
       valor: 24,
-      descripcion: 'Citas programadas para hoy',
-      tendencia: 'neutra',
-      icono: '📅',
+      descripcion: "Citas programadas para hoy",
+      tendencia: "neutra",
+      icono: "📅",
     },
     {
-      id: 'consultas',
-      titulo: 'Consultas Pendientes',
+      id: "consultas",
+      titulo: "Consultas Pendientes",
       valor: 8,
-      descripcion: 'Consultas por atender',
-      tendencia: 'negativa',
-      icono: '🩺',
+      descripcion: "Consultas por atender",
+      tendencia: "negativa",
+      icono: "🩺",
     },
     {
-      id: 'disponibilidad',
-      titulo: 'Disponibilidad',
-      valor: '92%',
-      descripcion: 'Disponibilidad de atención',
-      tendencia: 'positiva',
-      icono: '💚',
+      id: "disponibilidad",
+      titulo: "Disponibilidad",
+      valor: "92%",
+      descripcion: "Disponibilidad de atención",
+      tendencia: "positiva",
+      icono: "💚",
     },
   ];
 
   return (
     <main className="min-h-screen bg-slate-50">
+      {/* Alerta de mantenimiento */}
       {mantenimiento && (
         <div
           role="alert"
@@ -62,6 +69,7 @@ export default function PaginaDashboard() {
         </div>
       )}
 
+      {/* Encabezado del Dashboard */}
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -78,10 +86,21 @@ export default function PaginaDashboard() {
             </p>
           </div>
 
-          <StatusBadge activo={!mantenimiento} />
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Navegación del Día 5 */}
+            <Link
+              to="/pacientes"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+            >
+              Ver Pacientes →
+            </Link>
+
+            <StatusBadge activo={!mantenimiento} />
+          </div>
         </div>
       </header>
 
+      {/* Sección de métricas */}
       <section className="mx-auto max-w-7xl px-6 py-8">
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -94,33 +113,35 @@ export default function PaginaDashboard() {
             </p>
           </div>
 
+          {/* Botón de mantenimiento */}
           <button
             type="button"
             onClick={() => setMantenimiento((prev) => !prev)}
             className={`rounded-xl px-5 py-3 font-semibold text-white transition ${
               mantenimiento
-                ? 'bg-emerald-600 hover:bg-emerald-700'
-                : 'bg-rose-600 hover:bg-rose-700'
+                ? "bg-emerald-600 hover:bg-emerald-700"
+                : "bg-rose-600 hover:bg-rose-700"
             }`}
           >
             {mantenimiento
-              ? 'Desactivar mantenimiento'
-              : 'Activar mantenimiento'}
+              ? "Desactivar mantenimiento"
+              : "Activar mantenimiento"}
           </button>
         </div>
 
+        {/* Tarjetas de métricas */}
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
           {metricas.map((metrica) => (
             <MetricCard
               key={metrica.id}
               metrica={metrica}
               onIncrement={
-                metrica.id === 'pacientes'
+                metrica.id === "pacientes"
                   ? incrementarPacientes
                   : undefined
               }
               onDecrement={
-                metrica.id === 'pacientes'
+                metrica.id === "pacientes"
                   ? disminuirPacientes
                   : undefined
               }
@@ -128,6 +149,7 @@ export default function PaginaDashboard() {
           ))}
         </div>
 
+        {/* Estado de la plataforma */}
         <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="text-lg font-bold text-slate-800">
             Estado de la plataforma
@@ -135,12 +157,13 @@ export default function PaginaDashboard() {
 
           <p className="mt-2 text-sm text-slate-600">
             {mantenimiento
-              ? 'El mantenimiento está activado. Puedes desactivarlo con el botón superior.'
-              : 'Todos los indicadores están disponibles. El sistema funciona con normalidad.'}
+              ? "El mantenimiento está activado. Puedes desactivarlo con el botón superior."
+              : "Todos los indicadores están disponibles. El sistema funciona con normalidad."}
           </p>
         </div>
       </section>
 
+      {/* Pie de página */}
       <footer className="px-6 py-6 text-center text-sm text-slate-500">
         Clínica Salud Integral · Panel de administración
       </footer>

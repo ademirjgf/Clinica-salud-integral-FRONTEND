@@ -1,0 +1,70 @@
+
+import { NavLink, Outlet } from "react-router-dom";
+
+export default function Layout() {
+  const estiloEnlace = ({ isActive }: { isActive: boolean }) =>
+    `flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition ${
+      isActive
+        ? "bg-blue-600 text-white"
+        : "text-gray-700 hover:bg-gray-100"
+    }`;
+
+  return (
+    <div className="min-h-screen bg-gray-50 md:flex">
+      {/* Sidebar */}
+      <aside className="border-b border-gray-200 bg-white md:fixed md:inset-y-0 md:left-0 md:w-64 md:border-b-0 md:border-r">
+        {/* Encabezado */}
+        <div className="border-b border-gray-200 p-5">
+          <h2 className="text-xl font-bold text-blue-700">
+            Clínica Salud Integral
+          </h2>
+
+          <p className="mt-1 text-xs text-gray-500">
+            Panel de administración
+          </p>
+        </div>
+
+        {/* Navegación */}
+        <nav
+          aria-label="Navegación principal"
+          className="flex gap-2 overflow-x-auto p-3 md:flex-col md:p-4"
+        >
+          <NavLink
+            to="/"
+            end
+            className={estiloEnlace}
+          >
+            <span aria-hidden="true">📊</span>
+            Dashboard
+          </NavLink>
+
+          <NavLink
+            to="/pacientes"
+            className={estiloEnlace}
+          >
+            <span aria-hidden="true">👥</span>
+            Pacientes
+          </NavLink>
+
+          <NavLink
+            to="/citas/nueva"
+            className={estiloEnlace}
+          >
+            <span aria-hidden="true">📅</span>
+            Nueva cita
+          </NavLink>
+        </nav>
+
+        {/* Pie del sidebar */}
+        <div className="hidden border-t border-gray-200 p-4 text-xs text-gray-400 md:absolute md:bottom-0 md:block md:w-full">
+          Clínica Salud Integral — MP1
+        </div>
+      </aside>
+
+      {/* Contenido principal */}
+      <div className="min-w-0 flex-1 md:ml-64">
+        <Outlet />
+      </div>
+    </div>
+  );
+}
