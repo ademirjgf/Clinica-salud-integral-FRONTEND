@@ -1,60 +1,134 @@
-
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { api } from "../lib/axios";
 import MetricCard from "../components/MetricCard";
 import StatusBadge from "../components/StatusBadge";
 import type { Metrica } from "../types";
 
+interface PacienteAPI {
+  id: number;
+}
+
+interface MedicoAPI {
+  id: number;
+}
+
+type EstadoCita = "PROGRAMADA" | "COMPLETADA" | "CANCELADA";
+
+interface CitaAPI {
+  id: number;
+  estado: EstadoCita;
+  fechaHora: string;
+}
+
+interface DatosDashboard {
+  pacientes: number;
+  medicos: number;
+  citasHoy: number;
+  consultasPendientes: number;
+}
+
+function esHoy(fechaISO: string): boolean {
+  const fecha = new Date(fechaISO);
+  const hoy = new Date();
+
+  return (
+    !Number.isNaN(fecha.getTime()) &&
+    fecha.getFullYear() === hoy.getFullYear() &&
+    fecha.getMonth() === hoy.getMonth() &&
+    fecha.getDate() === hoy.getDate()
+  );
+}
+
 export default function PaginaDashboard() {
-  const [pacientes, setPacientes] = useState(128);
   const [mantenimiento, setMantenimiento] = useState(false);
 
-  // Incrementar cantidad de pacientes
-  const incrementarPacientes = () => {
-    setPacientes((prev) => prev + 1);
-  };
+  const [datos, setDatos] = useState<DatosDashboard | null>(null);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState("");
 
-  // Disminuir cantidad de pacientes
-  const disminuirPacientes = () => {
-    setPacientes((prev) => Math.max(0, prev - 1));
-  };
+  const cargarDatos = useCallback(async () => {
+    setCargando(true);
+    setError("");
 
-  // Métricas del Dashboard
-  const metricas: Metrica[] = [
-    {
-      id: "pacientes",
-      titulo: "Pacientes",
-      valor: pacientes,
-      descripcion: "Pacientes registrados",
-      tendencia: "positiva",
-      icono: "👥",
-    },
-    {
-      id: "citas",
-      titulo: "Citas Hoy",
-      valor: 24,
-      descripcion: "Citas programadas para hoy",
-      tendencia: "neutra",
-      icono: "📅",
-    },
-    {
-      id: "consultas",
-      titulo: "Consultas Pendientes",
-      valor: 8,
-      descripcion: "Consultas por atender",
-      tendencia: "negativa",
-      icono: "🩺",
-    },
-    {
-      id: "disponibilidad",
-      titulo: "Disponibilidad",
-      valor: "92%",
-      descripcion: "Disponibilidad de atención",
-      tendencia: "positiva",
-      icono: "💚",
-    },
-  ];
+    try {
+      const [respuestaPacientes, respuestaMedicos, respuestaCitas] =
+        await Promise.all([
+          api.get<PacienteAPI[]>("/pacientes"),
+          api.get<MedicoAPI[]>("/medicos"),
+          api.get<CitaAPI[]>("/citas"),
+        ]);
+
+      const pacientes = respuestaPacientes.data;
+      const medicos = respuestaMedicos.data;
+      const citas = respuestaCitas.data;
+
+      const citasHoy = citas.filter(
+        (cita) =>
+          cita.estado === "PROGRAMADA" && esHoy(cita.fechaHora)
+      ).length;
+
+      const consultasPendientes = citas.filter(
+        (cita) => cita.estado === "PROGRAMADA"
+      ).length;
+
+      setDatos({
+        pacientes: pacientes.length,
+        medicos: medicos.length,
+        citasHoy,
+        consultasPendientes,
+      });
+    } catch {
+      setDatos(null);
+      setError(
+        "No se pudieron cargar las métricas. Verifica la conexión con el servidor."
+      );
+    } finally {
+      setCargando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void cargarDatos();
+  }, [cargarDatos]);
+
+  const metricas: Metrica[] = datos
+    ? [
+        {
+          id: "pacientes",
+          titulo: "Pacientes",
+          valor: datos.pacientes,
+          descripcion: "Pacientes registrados",
+          tendencia: "positiva",
+          icono: "👥",
+        },
+        {
+          id: "citas",
+          titulo: "Citas Hoy",
+          valor: datos.citasHoy,
+          descripcion: "Citas programadas para hoy",
+          tendencia: "neutra",
+          icono: "📅",
+        },
+        {
+          id: "consultas",
+          titulo: "Consultas Pendientes",
+          valor: datos.consultasPendientes,
+          descripcion: "Citas programadas por atender",
+          tendencia: "negativa",
+          icono: "🩺",
+        },
+        {
+          id: "medicos",
+          titulo: "Médicos",
+          valor: datos.medicos,
+          descripcion: "Médicos registrados",
+          tendencia: "positiva",
+          icono: "👨‍⚕️",
+        },
+      ]
+    : [];
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -87,7 +161,6 @@ export default function PaginaDashboard() {
           </div>
 
           <div className="flex flex-wrap items-center gap-4">
-            {/* Navegación del Día 5 */}
             <Link
               to="/pacientes"
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
@@ -96,7 +169,8 @@ export default function PaginaDashboard() {
             </Link>
 
             <StatusBadge activo={!mantenimiento} />
-          </div>
+
+                      </div>
         </div>
       </header>
 
@@ -109,11 +183,10 @@ export default function PaginaDashboard() {
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              Indicadores principales de la clínica
+              Indicadores obtenidos del servidor
             </p>
           </div>
 
-          {/* Botón de mantenimiento */}
           <button
             type="button"
             onClick={() => setMantenimiento((prev) => !prev)}
@@ -129,27 +202,37 @@ export default function PaginaDashboard() {
           </button>
         </div>
 
-        {/* Tarjetas de métricas */}
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
-          {metricas.map((metrica) => (
-            <MetricCard
-              key={metrica.id}
-              metrica={metrica}
-              onIncrement={
-                metrica.id === "pacientes"
-                  ? incrementarPacientes
-                  : undefined
-              }
-              onDecrement={
-                metrica.id === "pacientes"
-                  ? disminuirPacientes
-                  : undefined
-              }
-            />
-          ))}
-        </div>
+        {cargando && (
+          <p role="status" className="rounded-xl bg-white p-6 text-slate-600">
+            Cargando métricas desde el servidor...
+          </p>
+        )}
 
-        {/* Estado de la plataforma */}
+        {!cargando && error && (
+          <div
+            role="alert"
+            className="rounded-xl border border-red-200 bg-red-50 p-6"
+          >
+            <p className="text-red-700">{error}</p>
+
+            <button
+              type="button"
+              onClick={() => void cargarDatos()}
+              className="mt-4 rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700"
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
+
+        {!cargando && !error && datos && (
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
+            {metricas.map((metrica) => (
+              <MetricCard key={metrica.id} metrica={metrica} />
+            ))}
+          </div>
+        )}
+
         <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="text-lg font-bold text-slate-800">
             Estado de la plataforma
@@ -158,12 +241,15 @@ export default function PaginaDashboard() {
           <p className="mt-2 text-sm text-slate-600">
             {mantenimiento
               ? "El mantenimiento está activado. Puedes desactivarlo con el botón superior."
-              : "Todos los indicadores están disponibles. El sistema funciona con normalidad."}
+              : error
+                ? "No se pudo verificar la conexión con los datos de la clínica."
+                : cargando
+                  ? "Consultando información del servidor..."
+                  : "Las métricas se cargaron correctamente desde el servidor."}
           </p>
         </div>
       </section>
 
-      {/* Pie de página */}
       <footer className="px-6 py-6 text-center text-sm text-slate-500">
         Clínica Salud Integral · Panel de administración
       </footer>
