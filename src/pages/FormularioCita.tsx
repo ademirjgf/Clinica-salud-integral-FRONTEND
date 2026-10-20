@@ -1,5 +1,6 @@
 
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -11,11 +12,17 @@ import type { CitaFormData } from "../schemas/citaSchema";
 import { useMedicos } from "../hooks/useMedicos";
 
 export default function FormularioCita() {
+  // Navegación programática del Día 5
+  const navigate = useNavigate();
+
+  // Carga simulada de médicos
   const { medicos, cargando } = useMedicos();
 
+  // Estado de confirmación
   const [citaConfirmada, setCitaConfirmada] =
     useState<CitaFormData | null>(null);
 
+  // Formulario con React Hook Form y Zod
   const {
     register,
     handleSubmit,
@@ -34,6 +41,7 @@ export default function FormularioCita() {
     },
   });
 
+  // Simulación de registro de cita
   async function agendarCita(datos: CitaFormData) {
     await new Promise<void>((resolve) => {
       setTimeout(resolve, 1500);
@@ -42,9 +50,15 @@ export default function FormularioCita() {
     setCitaConfirmada(datos);
   }
 
+  // Reiniciar el formulario
   function agendarOtraCita() {
     reset();
     setCitaConfirmada(null);
+  }
+
+  // Regresar a la página anterior
+  function cancelarCita() {
+    navigate(-1);
   }
 
   // Pantalla de confirmación
@@ -319,14 +333,27 @@ export default function FormularioCita() {
             )}
           </div>
 
-          {/* Enviar */}
-          <button
-            type="submit"
-            disabled={isSubmitting || cargando}
-            className="w-full rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isSubmitting ? "Agendando..." : "Agendar cita"}
-          </button>
+          {/* Botones del formulario */}
+          <div className="flex flex-col gap-3 sm:flex-row">
+            {/* Cancelar: funcionalidad del Día 5 */}
+            <button
+              type="button"
+              onClick={cancelarCita}
+              disabled={isSubmitting}
+              className="rounded-lg border border-gray-300 bg-white px-5 py-3 font-semibold text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-1"
+            >
+              Cancelar
+            </button>
+
+            {/* Agendar: funcionalidad del Día 4 */}
+            <button
+              type="submit"
+              disabled={isSubmitting || cargando}
+              className="rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-1"
+            >
+              {isSubmitting ? "Agendando..." : "Agendar cita"}
+            </button>
+          </div>
         </form>
       </div>
     </main>

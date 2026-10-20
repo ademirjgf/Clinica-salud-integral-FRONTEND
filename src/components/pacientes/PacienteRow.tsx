@@ -1,5 +1,6 @@
 
 import type { Paciente, EstadoPaciente } from "../../types/paciente";
+import { Link } from "react-router-dom";
 import BadgeEstado from "./BadgeEstado";
 
 interface PacienteRowProps {
@@ -13,6 +14,7 @@ export default function PacienteRow({
   onCambiarEstado,
   onEliminar,
 }: PacienteRowProps) {
+  // Cambiar el estado de un paciente
   function manejarCambioEstado(
     evento: React.ChangeEvent<HTMLSelectElement>,
   ) {
@@ -22,6 +24,7 @@ export default function PacienteRow({
     );
   }
 
+  // Eliminar un paciente con confirmación
   function manejarEliminar() {
     const confirmar = window.confirm(
       `¿Estás seguro de que deseas eliminar a ${paciente.nombre} ${paciente.apellido}?`,
@@ -34,6 +37,7 @@ export default function PacienteRow({
 
   return (
     <article className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 md:grid md:grid-cols-[1.2fr_1.5fr_1fr_auto] md:items-center md:gap-4">
+      {/* Nombre y especialidad */}
       <div>
         <h2 className="font-semibold text-gray-900">
           {paciente.nombre} {paciente.apellido}
@@ -44,6 +48,7 @@ export default function PacienteRow({
         </p>
       </div>
 
+      {/* Datos de contacto */}
       <div className="min-w-0">
         <p className="break-words text-sm text-gray-700">
           {paciente.email}
@@ -54,18 +59,25 @@ export default function PacienteRow({
         </p>
       </div>
 
+      {/* Última cita */}
       <div>
-        <p className="text-xs text-gray-500">Última cita</p>
+        <p className="text-xs text-gray-500">
+          Última cita
+        </p>
 
         <time className="text-sm font-medium text-gray-800">
           {paciente.ultimaCita}
         </time>
       </div>
 
+      {/* Estado y acciones */}
       <div className="flex flex-col gap-2 md:items-end">
         <BadgeEstado estado={paciente.estado} />
 
-        <label className="sr-only" htmlFor={`estado-${paciente.id}`}>
+        <label
+          className="sr-only"
+          htmlFor={`estado-${paciente.id}`}
+        >
           Cambiar estado de {paciente.nombre}
         </label>
 
@@ -80,10 +92,18 @@ export default function PacienteRow({
           <option value="en_espera">En espera</option>
         </select>
 
+        {/* Nueva funcionalidad del Día 5 */}
+        <Link
+          to={`/pacientes/${paciente.id}`}
+          className="inline-flex w-full items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100 md:w-auto"
+        >
+          Ver detalle →
+        </Link>
+
         <button
           type="button"
           onClick={manejarEliminar}
-          className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50"
+          className="w-full rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 md:w-auto"
         >
           Eliminar
         </button>
