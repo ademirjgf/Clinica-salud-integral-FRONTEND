@@ -8,9 +8,9 @@ export interface PacienteAPI {
   fechaRegistro: string;
 }
 
-export interface CrearPacienteAPI {
-  nombre: string;
-  apellido: string;
-  email: string;
-  fechaNacimiento: string;
-}
+export type CrearPacienteAPI = Omit<
+  PacienteAPI,
+  "id" | "fechaRegistro"
+>;
+
+export type ActualizarPacienteAPI = Partial<CrearPacienteAPI>;

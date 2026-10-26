@@ -1,28 +1,74 @@
 
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import toast from "react-hot-toast";
 
-import {
-  citaSchema,
-  obtenerFechaLocal,
-} from "../schemas/citaSchema";
-import type { CitaFormData } from "../schemas/citaSchema";
-import { useMedicos } from "../hooks/useMedicos";
+import { api } from "../lib/axios";
+import * as citasService from "../services/citas";
+import { extraerMensajeError } from "../lib/errorHandler";
+
+import type { PacienteAPI } from "../types/pacienteApi";
+import type { CitaAPI } from "../types/citaApi";
+
+interface MedicoAPI {
+  id: number;
+  nombre: string;
+  apellido: string;
+  especialidadId: number;
+  especialidad: {
+    id: number;
+    nombre: string;
+  };
+}
+
+function obtenerFechaLocal(): string {
+  const ahora = new Date();
+  const anio = ahora.getFullYear();
+  const mes = String(ahora.getMonth() + 1).padStart(2, "0");
+  const dia = String(ahora.getDate()).padStart(2, "0");
+
+  return `${anio}-${mes}-${dia}`;
+}
+
+const citaSchema = z.object({
+  pacienteId: z.string().min(1, "Selecciona un paciente"),
+  medicoId: z.string().min(1, "Selecciona un médico"),
+  fecha: z.string().min(1, "Selecciona una fecha"),
+  hora: z.string().min(1, "Selecciona una hora"),
+}).refine(
+  (datos) => {
+    if (!datos.fecha || !datos.hora) return true;
+
+    const fechaHora = new Date(
+      `${datos.fecha}T${datos.hora}:00`
+    );
+
+    return (
+      !Number.isNaN(fechaHora.getTime()) &&
+      fechaHora > new Date()
+    );
+  },
+  {
+    message: "La fecha y hora deben ser futuras",
+    path: ["fecha"],
+  }
+);
+
+type CitaFormData = z.infer<typeof citaSchema>;
 
 export default function FormularioCita() {
-  // Navegación programática del Día 5
   const navigate = useNavigate();
 
-  // Carga simulada de médicos
-  const { medicos, cargando } = useMedicos();
-
-  // Estado de confirmación
+  const [pacientes, setPacientes] = useState<PacienteAPI[]>([]);
+  const [medicos, setMedicos] = useState<MedicoAPI[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState("");
   const [citaConfirmada, setCitaConfirmada] =
-    useState<CitaFormData | null>(null);
+    useState<CitaAPI | null>(null);
 
-  // Formulario con React Hook Form y Zod
   const {
     register,
     handleSubmit,
@@ -30,90 +76,128 @@ export default function FormularioCita() {
     formState: { errors, isSubmitting },
   } = useForm<CitaFormData>({
     resolver: zodResolver(citaSchema),
-    mode: "onChange",
     defaultValues: {
-      pacienteNombre: "",
+      pacienteId: "",
       medicoId: "",
       fecha: "",
       hora: "",
-      motivo: "",
-      urgencia: "baja",
     },
   });
 
-  // Simulación de registro de cita
-  async function agendarCita(datos: CitaFormData) {
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 1500);
-    });
+  useEffect(() => {
+    async function cargarDatos() {
+      setCargando(true);
+      setErrorCarga("");
 
-    setCitaConfirmada(datos);
+      try {
+        const [respuestaPacientes, respuestaMedicos] =
+          await Promise.all([
+            api.get<PacienteAPI[]>("/pacientes"),
+            api.get<MedicoAPI[]>("/medicos"),
+          ]);
+
+        setPacientes(respuestaPacientes.data);
+        setMedicos(respuestaMedicos.data);
+      } catch (error: unknown) {
+        setErrorCarga(extraerMensajeError(error));
+        toast.error("No se pudieron cargar los datos");
+      } finally {
+        setCargando(false);
+      }
+    }
+
+    void cargarDatos();
+  }, []);
+
+  async function agendarCita(datos: CitaFormData) {
+    try {
+      const fechaHora = new Date(
+        `${datos.fecha}T${datos.hora}:00`
+      ).toISOString();
+
+      const respuesta = await citasService.create({
+        pacienteId: Number(datos.pacienteId),
+        medicoId: Number(datos.medicoId),
+        fechaHora,
+      });
+
+      setCitaConfirmada(respuesta.data);
+      toast.success("Cita agendada correctamente");
+    } catch (error: unknown) {
+      toast.error(extraerMensajeError(error));
+    }
   }
 
-  // Reiniciar el formulario
   function agendarOtraCita() {
     reset();
     setCitaConfirmada(null);
   }
 
-  // Regresar a la página anterior
-  function cancelarCita() {
-    navigate(-1);
-  }
-
-  // Pantalla de confirmación
   if (citaConfirmada) {
-    const medicoSeleccionado = medicos.find(
-      (medico) => medico.id === citaConfirmada.medicoId,
+    const paciente = pacientes.find(
+      (item) => item.id === citaConfirmada.pacienteId
+    );
+
+    const medico = medicos.find(
+      (item) => item.id === citaConfirmada.medicoId
     );
 
     return (
-      <main className="min-h-screen bg-gray-50 p-6">
+      <main className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
         <section className="mx-auto max-w-xl rounded-xl border border-green-200 bg-white p-6 shadow-sm">
-          <h1 className="mb-2 text-2xl font-bold text-green-700">
+          <h1 className="mb-3 text-2xl font-bold text-green-700">
             ¡Cita agendada correctamente!
           </h1>
 
-          <p className="mb-6 text-gray-600">
-            La cita se registró correctamente en esta
-            simulación.
+          <p className="mb-5 text-sm text-gray-600">
+            La cita #{citaConfirmada.id} fue guardada en
+            PostgreSQL.
           </p>
 
           <div className="space-y-3 text-sm text-gray-700">
             <p>
               <strong>Paciente:</strong>{" "}
-              {citaConfirmada.pacienteNombre}
+              {paciente
+                ? `${paciente.nombre} ${paciente.apellido}`
+                : `ID ${citaConfirmada.pacienteId}`}
             </p>
 
             <p>
               <strong>Médico:</strong>{" "}
-              {medicoSeleccionado?.nombre ?? "No disponible"}
+              {medico
+                ? `${medico.nombre} ${medico.apellido}`
+                : `ID ${citaConfirmada.medicoId}`}
             </p>
 
             <p>
-              <strong>Fecha:</strong> {citaConfirmada.fecha}
+              <strong>Fecha y hora:</strong>{" "}
+              {new Date(
+                citaConfirmada.fechaHora
+              ).toLocaleString("es-PE")}
             </p>
 
             <p>
-              <strong>Hora:</strong> {citaConfirmada.hora}
-            </p>
-
-            <p>
-              <strong>Motivo:</strong> {citaConfirmada.motivo}
-            </p>
-
-            <p>
-              <strong>Urgencia:</strong> {citaConfirmada.urgencia}
+              <strong>Estado:</strong>{" "}
+              {citaConfirmada.estado}
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={agendarOtraCita}
-            className="mt-6 rounded-lg bg-blue-600 px-5 py-2 font-medium text-white hover:bg-blue-700"
-          >
-            Agendar otra cita
-          </button>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link
+              to="/citas"
+              className="rounded-lg bg-blue-600 px-5 py-2 font-medium text-white hover:bg-blue-700"
+            >
+              Ver citas agendadas
+            </Link>
+
+            <button
+              type="button"
+              onClick={agendarOtraCita}
+              className="rounded-lg border border-gray-300 px-5 py-2 font-medium text-gray-700 hover:bg-gray-100"
+            >
+              Agendar otra cita
+            </button>
+          </div>
         </section>
       </main>
     );
@@ -132,45 +216,54 @@ export default function FormularioCita() {
           </h1>
 
           <p className="mt-2 text-gray-600">
-            Completa los datos para agendar una cita.
+            Completa los datos para agendar una cita real.
           </p>
         </header>
+
+        {errorCarga && (
+          <p
+            role="alert"
+            className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+          >
+            {errorCarga}
+          </p>
+        )}
 
         <form
           onSubmit={handleSubmit(agendarCita)}
           noValidate
           className="space-y-5 rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
         >
-          {/* Nombre del paciente */}
           <div>
             <label
-              htmlFor="pacienteNombre"
+              htmlFor="pacienteId"
               className="mb-1 block font-medium text-gray-700"
             >
-              Nombre del paciente
+              Paciente
             </label>
 
-            <input
-              id="pacienteNombre"
-              type="text"
-              {...register("pacienteNombre")}
-              aria-invalid={!!errors.pacienteNombre}
-              className={`w-full rounded-lg border px-3 py-2 ${
-                errors.pacienteNombre
-                  ? "border-red-500"
-                  : "border-gray-300"
-              }`}
-              placeholder="Nombre completo"
-            />
+            <select
+              id="pacienteId"
+              {...register("pacienteId")}
+              disabled={cargando || isSubmitting}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2"
+            >
+              <option value="">Selecciona un paciente</option>
 
-            {errors.pacienteNombre && (
+              {pacientes.map((paciente) => (
+                <option key={paciente.id} value={paciente.id}>
+                  {paciente.nombre} {paciente.apellido}
+                </option>
+              ))}
+            </select>
+
+            {errors.pacienteId && (
               <p role="alert" className="mt-1 text-sm text-red-600">
-                {errors.pacienteNombre.message}
+                {errors.pacienteId.message}
               </p>
             )}
           </div>
 
-          {/* Médico */}
           <div>
             <label
               htmlFor="medicoId"
@@ -182,29 +275,18 @@ export default function FormularioCita() {
             <select
               id="medicoId"
               {...register("medicoId")}
-              disabled={cargando}
-              aria-invalid={!!errors.medicoId}
-              className={`w-full rounded-lg border bg-white px-3 py-2 ${
-                errors.medicoId
-                  ? "border-red-500"
-                  : "border-gray-300"
-              }`}
+              disabled={cargando || isSubmitting}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2"
             >
-              {cargando ? (
-                <option value="" disabled>
-                  Cargando médicos...
-                </option>
-              ) : (
-                <>
-                  <option value="">Selecciona un médico</option>
+              <option value="">Selecciona un médico</option>
 
-                  {medicos.map((medico) => (
-                    <option key={medico.id} value={medico.id}>
-                      {medico.nombre} — {medico.especialidad}
-                    </option>
+              {medicos.map((medico) => (
+              <option key={medico.id} value={medico.id}>
+              {medico.nombre} {medico.apellido}
+               {" — "}
+               {medico.especialidad.nombre}
+               </option>
                   ))}
-                </>
-              )}
             </select>
 
             {errors.medicoId && (
@@ -214,7 +296,6 @@ export default function FormularioCita() {
             )}
           </div>
 
-          {/* Fecha y hora */}
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label
@@ -229,12 +310,8 @@ export default function FormularioCita() {
                 type="date"
                 min={obtenerFechaLocal()}
                 {...register("fecha")}
-                aria-invalid={!!errors.fecha}
-                className={`w-full rounded-lg border px-3 py-2 ${
-                  errors.fecha
-                    ? "border-red-500"
-                    : "border-gray-300"
-                }`}
+                disabled={isSubmitting}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2"
               />
 
               {errors.fecha && (
@@ -256,12 +333,8 @@ export default function FormularioCita() {
                 id="hora"
                 type="time"
                 {...register("hora")}
-                aria-invalid={!!errors.hora}
-                className={`w-full rounded-lg border px-3 py-2 ${
-                  errors.hora
-                    ? "border-red-500"
-                    : "border-gray-300"
-                }`}
+                disabled={isSubmitting}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2"
               />
 
               {errors.hora && (
@@ -272,86 +345,24 @@ export default function FormularioCita() {
             </div>
           </div>
 
-          {/* Motivo */}
-          <div>
-            <label
-              htmlFor="motivo"
-              className="mb-1 block font-medium text-gray-700"
-            >
-              Motivo de la consulta
-            </label>
-
-            <textarea
-              id="motivo"
-              rows={4}
-              {...register("motivo")}
-              aria-invalid={!!errors.motivo}
-              className={`w-full rounded-lg border px-3 py-2 ${
-                errors.motivo
-                  ? "border-red-500"
-                  : "border-gray-300"
-              }`}
-              placeholder="Describe el motivo de la consulta"
-            />
-
-            {errors.motivo && (
-              <p role="alert" className="mt-1 text-sm text-red-600">
-                {errors.motivo.message}
-              </p>
-            )}
-          </div>
-
-          {/* Urgencia */}
-          <div>
-            <label
-              htmlFor="urgencia"
-              className="mb-1 block font-medium text-gray-700"
-            >
-              Nivel de urgencia
-            </label>
-
-            <select
-              id="urgencia"
-              {...register("urgencia")}
-              aria-invalid={!!errors.urgencia}
-              className={`w-full rounded-lg border bg-white px-3 py-2 ${
-                errors.urgencia
-                  ? "border-red-500"
-                  : "border-gray-300"
-              }`}
-            >
-              <option value="baja">Baja</option>
-              <option value="media">Media</option>
-              <option value="alta">Alta</option>
-              <option value="critica">Crítica</option>
-            </select>
-
-            {errors.urgencia && (
-              <p role="alert" className="mt-1 text-sm text-red-600">
-                {errors.urgencia.message}
-              </p>
-            )}
-          </div>
-
-          {/* Botones del formulario */}
-          <div className="flex flex-col gap-3 sm:flex-row">
-            {/* Cancelar: funcionalidad del Día 5 */}
+          <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={cancelarCita}
+              onClick={() => navigate(-1)}
               disabled={isSubmitting}
-              className="rounded-lg border border-gray-300 bg-white px-5 py-3 font-semibold text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-1"
+              className="rounded-lg border border-gray-300 px-5 py-3 font-semibold text-gray-700 hover:bg-gray-100"
             >
               Cancelar
             </button>
 
-            {/* Agendar: funcionalidad del Día 4 */}
             <button
               type="submit"
-              disabled={isSubmitting || cargando}
-              className="rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-1"
+              disabled={isSubmitting || cargando || !!errorCarga}
+              className="rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {isSubmitting ? "Agendando..." : "Agendar cita"}
+              {isSubmitting
+                ? "Agendando..."
+                : "Agendar cita"}
             </button>
           </div>
         </form>

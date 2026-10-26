@@ -1,3 +1,4 @@
+
 import { Route, Routes } from "react-router-dom";
 
 import Layout from "./layouts/Layout";
@@ -7,6 +8,7 @@ import PaginaDashboard from "./pages/PaginaDashboard";
 import PaginaPacientes from "./pages/PaginaPacientes";
 import PaginaDetallePaciente from "./pages/PaginaDetallePaciente";
 import FormularioCita from "./pages/FormularioCita";
+import PaginaCitas from "./pages/PaginaCitas";
 import PaginaNotFound from "./pages/PaginaNotFound";
 import PaginaLogin from "./pages/PaginaLogin";
 
@@ -16,7 +18,7 @@ export default function App() {
       {/* Ruta pública */}
       <Route path="/login" element={<PaginaLogin />} />
 
-      {/* Rutas que requieren autenticación */}
+      {/* Rutas protegidas */}
       <Route element={<RutaProtegida />}>
         <Route element={<Layout />}>
           <Route path="/" element={<PaginaDashboard />} />
@@ -27,6 +29,8 @@ export default function App() {
             path="/pacientes/:id"
             element={<PaginaDetallePaciente />}
           />
+
+          <Route path="/citas" element={<PaginaCitas />} />
 
           <Route path="/citas/nueva" element={<FormularioCita />} />
 
