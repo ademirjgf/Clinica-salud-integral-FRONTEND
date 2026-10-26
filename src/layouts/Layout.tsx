@@ -2,7 +2,11 @@
 import { NavLink, Outlet } from "react-router-dom";
 
 export default function Layout() {
-  const estiloEnlace = ({ isActive }: { isActive: boolean }) =>
+  const estiloEnlace = ({
+    isActive,
+  }: {
+    isActive: boolean;
+  }) =>
     `flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition ${
       isActive
         ? "bg-blue-600 text-white"
@@ -59,10 +63,18 @@ export default function Layout() {
             <span aria-hidden="true">📅</span>
             Nueva cita
           </NavLink>
+
+          <NavLink
+            to="/reportes"
+            className={estiloEnlace}
+          >
+            <span aria-hidden="true">📈</span>
+            Reportes
+          </NavLink>
         </nav>
 
         <div className="hidden border-t border-gray-200 p-4 text-xs text-gray-400 md:absolute md:bottom-0 md:block md:w-full">
-          Clínica Salud Integral — MP1
+          Clínica Salud Integral — MP2
         </div>
       </aside>
 
