@@ -11,8 +11,11 @@ import type {
   ActualizarPacienteAPI,
 } from "../types/pacienteApi";
 
+import type { RespuestaPaginada } from "../types/api";
+
 interface PacientesState {
   pacientes: PacienteAPI[];
+  paginacion: RespuestaPaginada<PacienteAPI> | null;
   cargando: boolean;
   error: string | null;
 
@@ -25,14 +28,22 @@ interface PacientesState {
   eliminar: (id: number) => Promise<void>;
 }
 
+let controladorActual: AbortController | null = null;
+
 export const usePacientesStore = create<PacientesState>()(
   devtools(
     (set) => ({
       pacientes: [],
+      paginacion: null,
       cargando: false,
       error: null,
 
       cargar: async (query) => {
+        controladorActual?.abort();
+
+        const controlador = new AbortController();
+        controladorActual = controlador;
+
         set(
           { cargando: true, error: null },
           false,
@@ -40,32 +51,29 @@ export const usePacientesStore = create<PacientesState>()(
         );
 
         try {
-          const respuesta = await pacientesService.getAll();
+          const respuesta = await pacientesService.getAll(
+            query,
+            controlador.signal
+          );
 
-          const pacientesFiltrados = query
-            ? respuesta.data.filter((paciente) => {
-                const texto =
-                  `${paciente.nombre} ${paciente.apellido} ${paciente.email}`
-                    .toLowerCase();
-
-                return texto.includes(query.toLowerCase());
-              })
-            : respuesta.data;
+          if (controlador.signal.aborted) return;
 
           set(
             {
-              pacientes: pacientesFiltrados,
+              pacientes: respuesta.data.data,
+              paginacion: respuesta.data,
               cargando: false,
+              error: null,
             },
             false,
             "pacientes/cargarExito"
           );
         } catch (error: unknown) {
-          const mensaje = extraerMensajeError(error);
+          if (controlador.signal.aborted) return;
 
           set(
             {
-              error: mensaje,
+              error: extraerMensajeError(error),
               cargando: false,
             },
             false,
@@ -73,12 +81,18 @@ export const usePacientesStore = create<PacientesState>()(
           );
 
           throw error;
+        } finally {
+          if (controladorActual === controlador) {
+            controladorActual = null;
+          }
         }
       },
 
       crear: async (datos) => {
         try {
-          const respuesta = await pacientesService.create(datos);
+          const respuesta = await pacientesService.create(
+            datos
+          );
 
           set(
             (estado) => ({
@@ -111,10 +125,11 @@ export const usePacientesStore = create<PacientesState>()(
 
           set(
             (estado) => ({
-              pacientes: estado.pacientes.map((paciente) =>
-                paciente.id === id
-                  ? respuesta.data
-                  : paciente
+              pacientes: estado.pacientes.map(
+                (paciente) =>
+                  paciente.id === id
+                    ? respuesta.data
+                    : paciente
               ),
               error: null,
             }),

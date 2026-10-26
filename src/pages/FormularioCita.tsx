@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -8,6 +8,7 @@ import toast from "react-hot-toast";
 
 import { api } from "../lib/axios";
 import { extraerMensajeError } from "../lib/errorHandler";
+import { useApi } from "../hooks/useApi";
 
 import { usePacientesStore } from "../stores/pacientesStore";
 import { useCitasStore } from "../stores/citasStore";
@@ -65,15 +66,51 @@ type CitaFormData = z.infer<typeof citaSchema>;
 export default function FormularioCita() {
   const navigate = useNavigate();
 
-  const pacientes = usePacientesStore((s) => s.pacientes);
-  const cargandoPacientes = usePacientesStore((s) => s.cargando);
-  const cargarPacientes = usePacientesStore((s) => s.cargar);
+  // Zustand: pacientes
+  const pacientes = usePacientesStore(
+    (s) => s.pacientes
+  );
 
-  const agregarCita = useCitasStore((s) => s.agregarCita);
+  const cargandoPacientes = usePacientesStore(
+    (s) => s.cargando
+  );
 
-  const [medicos, setMedicos] = useState<MedicoAPI[]>([]);
-  const [cargandoMedicos, setCargandoMedicos] = useState(true);
-  const [errorCarga, setErrorCarga] = useState("");
+  const errorPacientes = usePacientesStore(
+    (s) => s.error
+  );
+
+  const cargarPacientes = usePacientesStore(
+    (s) => s.cargar
+  );
+
+  // Zustand: citas
+  const agregarCita = useCitasStore(
+    (s) => s.agregarCita
+  );
+
+  // useApi<T>: consulta de médicos
+  const obtenerMedicos = useCallback(
+    async (signal: AbortSignal): Promise<MedicoAPI[]> => {
+      const respuesta = await api.get<MedicoAPI[]>(
+        "/medicos",
+        { signal }
+      );
+
+      return respuesta.data;
+    },
+    []
+  );
+
+  const {
+    data: medicosData,
+    cargando: cargandoMedicos,
+    error: errorMedicos,
+    recargar: recargarMedicos,
+  } = useApi<MedicoAPI[]>(obtenerMedicos);
+
+  const medicos = medicosData ?? [];
+
+  // Estado local: únicamente interfaz
   const [citaConfirmada, setCitaConfirmada] =
     useState<CitaAPI | null>(null);
 
@@ -92,27 +129,11 @@ export default function FormularioCita() {
     },
   });
 
+  // Los pacientes continúan gestionados por Zustand
   useEffect(() => {
-    async function cargarDatos() {
-      setCargandoMedicos(true);
-      setErrorCarga("");
-
-      try {
-        await Promise.all([
-          cargarPacientes(),
-          api.get<MedicoAPI[]>("/medicos").then((respuesta) => {
-            setMedicos(respuesta.data);
-          }),
-        ]);
-      } catch (error: unknown) {
-        setErrorCarga(extraerMensajeError(error));
-        toast.error("No se pudieron cargar los datos");
-      } finally {
-        setCargandoMedicos(false);
-      }
-    }
-
-    void cargarDatos();
+    void cargarPacientes().catch(() => {
+      // El error queda registrado en PacientesStore.
+    });
   }, [cargarPacientes]);
 
   async function agendarCita(datos: CitaFormData) {
@@ -139,6 +160,7 @@ export default function FormularioCita() {
     setCitaConfirmada(null);
   }
 
+  // Pantalla de confirmación
   if (citaConfirmada) {
     const paciente = pacientes.find(
       (item) => item.id === citaConfirmada.pacienteId
@@ -182,7 +204,8 @@ export default function FormularioCita() {
             </p>
 
             <p>
-              <strong>Estado:</strong> {citaConfirmada.estado}
+              <strong>Estado:</strong>{" "}
+              {citaConfirmada.estado}
             </p>
           </div>
 
@@ -207,6 +230,8 @@ export default function FormularioCita() {
     );
   }
 
+  const errorCarga = errorPacientes || errorMedicos;
+
   return (
     <main className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-3xl">
@@ -225,12 +250,28 @@ export default function FormularioCita() {
         </header>
 
         {errorCarga && (
-          <p
+          <div
             role="alert"
             className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700"
           >
-            {errorCarga}
-          </p>
+            <p>{errorCarga}</p>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (errorMedicos) {
+                  recargarMedicos();
+                }
+
+                if (errorPacientes) {
+                  void cargarPacientes().catch(() => {});
+                }
+              }}
+              className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+            >
+              Reintentar carga
+            </button>
+          </div>
         )}
 
         <form
@@ -238,6 +279,7 @@ export default function FormularioCita() {
           noValidate
           className="space-y-5 rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
         >
+          {/* Paciente */}
           <div>
             <label
               htmlFor="pacienteId"
@@ -252,22 +294,33 @@ export default function FormularioCita() {
               disabled={cargandoPacientes || isSubmitting}
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2"
             >
-              <option value="">Selecciona un paciente</option>
+              <option value="">
+                {cargandoPacientes
+                  ? "Cargando pacientes..."
+                  : "Selecciona un paciente"}
+              </option>
 
               {pacientes.map((paciente) => (
-                <option key={paciente.id} value={paciente.id}>
+                <option
+                  key={paciente.id}
+                  value={paciente.id}
+                >
                   {paciente.nombre} {paciente.apellido}
                 </option>
               ))}
             </select>
 
             {errors.pacienteId && (
-              <p role="alert" className="mt-1 text-sm text-red-600">
+              <p
+                role="alert"
+                className="mt-1 text-sm text-red-600"
+              >
                 {errors.pacienteId.message}
               </p>
             )}
           </div>
 
+          {/* Médico */}
           <div>
             <label
               htmlFor="medicoId"
@@ -282,10 +335,17 @@ export default function FormularioCita() {
               disabled={cargandoMedicos || isSubmitting}
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2"
             >
-              <option value="">Selecciona un médico</option>
+              <option value="">
+                {cargandoMedicos
+                  ? "Cargando médicos..."
+                  : "Selecciona un médico"}
+              </option>
 
               {medicos.map((medico) => (
-                <option key={medico.id} value={medico.id}>
+                <option
+                  key={medico.id}
+                  value={medico.id}
+                >
                   {medico.nombre} {medico.apellido}
                   {" — "}
                   {medico.especialidad.nombre}
@@ -294,12 +354,16 @@ export default function FormularioCita() {
             </select>
 
             {errors.medicoId && (
-              <p role="alert" className="mt-1 text-sm text-red-600">
+              <p
+                role="alert"
+                className="mt-1 text-sm text-red-600"
+              >
                 {errors.medicoId.message}
               </p>
             )}
           </div>
 
+          {/* Fecha y hora */}
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label
@@ -319,7 +383,10 @@ export default function FormularioCita() {
               />
 
               {errors.fecha && (
-                <p role="alert" className="mt-1 text-sm text-red-600">
+                <p
+                  role="alert"
+                  className="mt-1 text-sm text-red-600"
+                >
                   {errors.fecha.message}
                 </p>
               )}
@@ -342,13 +409,17 @@ export default function FormularioCita() {
               />
 
               {errors.hora && (
-                <p role="alert" className="mt-1 text-sm text-red-600">
+                <p
+                  role="alert"
+                  className="mt-1 text-sm text-red-600"
+                >
                   {errors.hora.message}
                 </p>
               )}
             </div>
           </div>
 
+          {/* Acciones */}
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
@@ -369,7 +440,9 @@ export default function FormularioCita() {
               }
               className="rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {isSubmitting ? "Agendando..." : "Agendar cita"}
+              {isSubmitting
+                ? "Agendando..."
+                : "Agendar cita"}
             </button>
           </div>
         </form>

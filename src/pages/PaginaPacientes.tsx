@@ -7,47 +7,80 @@ import toast from "react-hot-toast";
 
 import { usePacientesStore } from "../stores/pacientesStore";
 import { useFiltrosStore } from "../stores/filtrosStore";
+import { useDebounce } from "../hooks/useDebounce";
 import { extraerMensajeError } from "../lib/errorHandler";
+
 import ModalConfirmacion from "../components/ModalConfirmacion";
 
 import type { PacienteAPI } from "../types/pacienteApi";
 
+// Validación del formulario
 const pacienteSchema = z.object({
-  nombre: z.string().trim().min(1, "El nombre es obligatorio"),
-  apellido: z.string().trim().min(1, "El apellido es obligatorio"),
+  nombre: z
+    .string()
+    .trim()
+    .min(1, "El nombre es obligatorio"),
+
+  apellido: z
+    .string()
+    .trim()
+    .min(1, "El apellido es obligatorio"),
+
   email: z.email("Ingresa un correo electrónico válido"),
+
   fechaNacimiento: z
     .string()
     .min(1, "La fecha de nacimiento es obligatoria")
     .refine((valor) => {
       const fecha = new Date(`${valor}T00:00:00.000Z`);
 
-      return (
-        !Number.isNaN(fecha.getTime()) &&
-        fecha.toISOString().slice(0, 10) === valor &&
-        fecha <= new Date()
-      );
+      if (Number.isNaN(fecha.getTime())) {
+        return false;
+      }
+
+      if (fecha.toISOString().slice(0, 10) !== valor) {
+        return false;
+      }
+
+      return fecha <= new Date();
     }, "Ingresa una fecha de nacimiento válida y no futura"),
 });
 
 type FormularioPaciente = z.infer<typeof pacienteSchema>;
 
 export default function PaginaPacientes() {
+  // Zustand: pacientes
   const pacientes = usePacientesStore((s) => s.pacientes);
   const cargando = usePacientesStore((s) => s.cargando);
   const errorCarga = usePacientesStore((s) => s.error);
   const cargar = usePacientesStore((s) => s.cargar);
   const crear = usePacientesStore((s) => s.crear);
   const eliminar = usePacientesStore((s) => s.eliminar);
+  const paginacion = usePacientesStore((s) => s.paginacion);
 
-  const busqueda = useFiltrosStore((s) => s.queryPacientes);
-  const setBusqueda = useFiltrosStore((s) => s.setQueryPacientes);
-  const resetFiltros = useFiltrosStore((s) => s.resetFiltros);
+  // Zustand: filtros
+  const busqueda = useFiltrosStore(
+    (s) => s.queryPacientes
+  );
 
+  const setBusqueda = useFiltrosStore(
+    (s) => s.setQueryPacientes
+  );
+
+  const resetFiltros = useFiltrosStore(
+    (s) => s.resetFiltros
+  );
+
+  // Esperar 350 ms antes de buscar
+  const busquedaDebounced = useDebounce(busqueda, 350);
+
+  // Estados locales exclusivos de la interfaz
   const [pacienteAEliminar, setPacienteAEliminar] =
     useState<PacienteAPI | null>(null);
+
   const [eliminando, setEliminando] = useState(false);
 
+  // React Hook Form + Zod
   const {
     register,
     handleSubmit,
@@ -63,15 +96,23 @@ export default function PaginaPacientes() {
     },
   });
 
+  // Buscar pacientes después del debounce
   useEffect(() => {
-    void cargar().catch(() => {
-      // El error ya queda guardado en Zustand.
+    void cargar(busquedaDebounced).catch(() => {
+      // El error se almacena en PacientesStore.
     });
-  }, [cargar]);
+  }, [cargar, busquedaDebounced]);
 
-  async function agregarPaciente(datos: FormularioPaciente) {
+  // Registrar paciente
+  async function agregarPaciente(
+    datos: FormularioPaciente
+  ) {
     try {
       await crear(datos);
+
+      // Recargar para respetar la búsqueda actual
+      await cargar(busquedaDebounced);
+
       toast.success("Paciente registrado");
       reset();
     } catch (error: unknown) {
@@ -79,20 +120,36 @@ export default function PaginaPacientes() {
     }
   }
 
-  function cancelarEliminacion() {
-    if (!eliminando) {
-      setPacienteAEliminar(null);
-    }
+  // Abrir modal de eliminación
+  function solicitarEliminacion(
+    paciente: PacienteAPI
+  ) {
+    setPacienteAEliminar(paciente);
   }
 
+  // Cerrar modal
+  function cancelarEliminacion() {
+    if (eliminando) return;
+
+    setPacienteAEliminar(null);
+  }
+
+  // Eliminar paciente
   async function confirmarEliminacion() {
-    if (!pacienteAEliminar || eliminando) return;
+    if (!pacienteAEliminar || eliminando) {
+      return;
+    }
 
     setEliminando(true);
 
     try {
       await eliminar(pacienteAEliminar.id);
+
       setPacienteAEliminar(null);
+
+      // Actualizar listado desde la API
+      await cargar(busquedaDebounced);
+
       toast.success("Paciente eliminado");
     } catch (error: unknown) {
       toast.error(extraerMensajeError(error));
@@ -101,19 +158,20 @@ export default function PaginaPacientes() {
     }
   }
 
-  const pacientesFiltrados = pacientes.filter((paciente) => {
-    const texto = busqueda.trim().toLowerCase();
+  // Los resultados ya llegan filtrados desde PostgreSQL
+  const pacientesFiltrados = pacientes;
 
-    return (
-      `${paciente.nombre} ${paciente.apellido} ${paciente.email}`
-        .toLowerCase()
-        .includes(texto)
-    );
-  });
+  // Indicar que el usuario sigue escribiendo
+  const esperandoDebounce =
+    busqueda !== busquedaDebounced;
+
+  const buscando =
+    cargando || esperandoDebounce;
 
   return (
     <main className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
+        {/* Encabezado */}
         <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-medium text-blue-700">
@@ -130,12 +188,13 @@ export default function PaginaPacientes() {
           </div>
 
           <span className="text-sm text-gray-500">
-            {cargando
-              ? "Cargando..."
-              : `${pacientesFiltrados.length} paciente(s) encontrado(s)`}
+            {buscando
+              ? "Buscando..."
+              : `${paginacion?.total ?? pacientesFiltrados.length} paciente(s) encontrado(s)`}
           </span>
         </header>
 
+        {/* Buscador */}
         <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
           <div>
             <label
@@ -145,16 +204,33 @@ export default function PaginaPacientes() {
               Buscar pacientes
             </label>
 
-            <input
-              id="busqueda"
-              type="search"
-              value={busqueda}
-              onChange={(evento) =>
-                setBusqueda(evento.target.value)
-              }
-              placeholder="Buscar por nombre, apellido o correo..."
-              className="w-full rounded-lg border border-gray-300 px-3 py-2"
-            />
+            <div className="relative">
+              <input
+                id="busqueda"
+                type="search"
+                value={busqueda}
+                onChange={(evento) =>
+                  setBusqueda(evento.target.value)
+                }
+                placeholder="Buscar por nombre, apellido o correo..."
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-12 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              />
+
+              {buscando && (
+                <div
+                  role="status"
+                  aria-label="Buscando pacientes"
+                  className="pointer-events-none absolute inset-y-0 right-4 flex items-center"
+                >
+                  <span className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+                </div>
+              )}
+            </div>
+
+            <p className="mt-2 text-xs text-gray-500">
+              La búsqueda se realiza 350 ms después de
+              dejar de escribir.
+            </p>
           </div>
 
           <button
@@ -166,6 +242,7 @@ export default function PaginaPacientes() {
           </button>
         </section>
 
+        {/* Formulario */}
         <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
           <h2 className="mb-2 text-xl font-semibold text-gray-900">
             Registrar nuevo paciente
@@ -180,6 +257,7 @@ export default function PaginaPacientes() {
             className="grid grid-cols-1 gap-4 sm:grid-cols-2"
             noValidate
           >
+            {/* Nombre */}
             <div>
               <label
                 htmlFor="nombre"
@@ -197,12 +275,16 @@ export default function PaginaPacientes() {
               />
 
               {errors.nombre && (
-                <p role="alert" className="mt-1 text-sm text-red-600">
+                <p
+                  role="alert"
+                  className="mt-1 text-sm text-red-600"
+                >
                   {errors.nombre.message}
                 </p>
               )}
             </div>
 
+            {/* Apellido */}
             <div>
               <label
                 htmlFor="apellido"
@@ -220,12 +302,16 @@ export default function PaginaPacientes() {
               />
 
               {errors.apellido && (
-                <p role="alert" className="mt-1 text-sm text-red-600">
+                <p
+                  role="alert"
+                  className="mt-1 text-sm text-red-600"
+                >
                   {errors.apellido.message}
                 </p>
               )}
             </div>
 
+            {/* Correo */}
             <div>
               <label
                 htmlFor="email"
@@ -244,12 +330,16 @@ export default function PaginaPacientes() {
               />
 
               {errors.email && (
-                <p role="alert" className="mt-1 text-sm text-red-600">
+                <p
+                  role="alert"
+                  className="mt-1 text-sm text-red-600"
+                >
                   {errors.email.message}
                 </p>
               )}
             </div>
 
+            {/* Fecha de nacimiento */}
             <div>
               <label
                 htmlFor="fechaNacimiento"
@@ -268,7 +358,10 @@ export default function PaginaPacientes() {
               />
 
               {errors.fechaNacimiento && (
-                <p role="alert" className="mt-1 text-sm text-red-600">
+                <p
+                  role="alert"
+                  className="mt-1 text-sm text-red-600"
+                >
                   {errors.fechaNacimiento.message}
                 </p>
               )}
@@ -288,28 +381,38 @@ export default function PaginaPacientes() {
           </form>
         </section>
 
-        <section aria-label="Listado de pacientes" className="space-y-3">
+        {/* Listado de pacientes */}
+        <section
+          aria-label="Listado de pacientes"
+          className="space-y-3"
+        >
           <h2 className="text-xl font-semibold text-gray-900">
             Pacientes registrados
           </h2>
 
-          {cargando ? (
+          {buscando ? (
             <p
               role="status"
               className="rounded-xl bg-white p-6 text-center text-gray-600"
             >
-              Cargando pacientes desde PostgreSQL...
+              Buscando pacientes...
             </p>
           ) : errorCarga ? (
             <div
               role="alert"
               className="rounded-xl border border-red-200 bg-red-50 p-6"
             >
-              <p className="text-red-700">{errorCarga}</p>
+              <p className="text-red-700">
+                {errorCarga}
+              </p>
 
               <button
                 type="button"
-                onClick={() => void cargar().catch(() => {})}
+                onClick={() =>
+                  void cargar(busquedaDebounced).catch(
+                    () => {}
+                  )
+                }
                 className="mt-4 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white"
               >
                 Reintentar
@@ -324,7 +427,8 @@ export default function PaginaPacientes() {
                 <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900">
-                      {paciente.nombre} {paciente.apellido}
+                      {paciente.nombre}{" "}
+                      {paciente.apellido}
                     </h3>
 
                     <p className="mt-1 text-sm text-gray-600">
@@ -333,7 +437,10 @@ export default function PaginaPacientes() {
 
                     <p className="mt-1 text-sm text-gray-500">
                       Fecha de nacimiento:{" "}
-                      {paciente.fechaNacimiento.slice(0, 10)}
+                      {paciente.fechaNacimiento.slice(
+                        0,
+                        10
+                      )}
                     </p>
                   </div>
 
@@ -344,7 +451,9 @@ export default function PaginaPacientes() {
 
                     <button
                       type="button"
-                      onClick={() => setPacienteAEliminar(paciente)}
+                      onClick={() =>
+                        solicitarEliminacion(paciente)
+                      }
                       className="rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50"
                     >
                       Eliminar
@@ -361,6 +470,7 @@ export default function PaginaPacientes() {
         </section>
       </div>
 
+      {/* Modal de eliminación */}
       <ModalConfirmacion
         abierto={pacienteAEliminar !== null}
         titulo="Eliminar paciente"
@@ -370,7 +480,9 @@ export default function PaginaPacientes() {
             : ""
         }
         cargando={eliminando}
-        onConfirmar={() => void confirmarEliminacion()}
+        onConfirmar={() =>
+          void confirmarEliminacion()
+        }
         onCancelar={cancelarEliminacion}
       />
     </main>
