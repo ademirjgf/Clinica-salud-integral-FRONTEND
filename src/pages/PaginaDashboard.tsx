@@ -1,25 +1,19 @@
+
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../lib/axios";
+import { extraerMensajeError } from "../lib/errorHandler";
 import MetricCard from "../components/MetricCard";
 import StatusBadge from "../components/StatusBadge";
-import type { Metrica } from "../types";
 
-interface PacienteAPI {
-  id: number;
-}
+import type { Metrica } from "../types";
+import type { CitaAPI } from "../types/citaApi";
+import type { PacienteAPI } from "../types/pacienteApi";
+import type { RespuestaPaginada } from "../types/api";
 
 interface MedicoAPI {
   id: number;
-}
-
-type EstadoCita = "PROGRAMADA" | "COMPLETADA" | "CANCELADA";
-
-interface CitaAPI {
-  id: number;
-  estado: EstadoCita;
-  fechaHora: string;
 }
 
 interface DatosDashboard {
@@ -43,7 +37,6 @@ function esHoy(fechaISO: string): boolean {
 
 export default function PaginaDashboard() {
   const [mantenimiento, setMantenimiento] = useState(false);
-
   const [datos, setDatos] = useState<DatosDashboard | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
@@ -53,37 +46,36 @@ export default function PaginaDashboard() {
     setError("");
 
     try {
-      const [respuestaPacientes, respuestaMedicos, respuestaCitas] =
-        await Promise.all([
-          api.get<PacienteAPI[]>("/pacientes"),
-          api.get<MedicoAPI[]>("/medicos"),
-          api.get<CitaAPI[]>("/citas"),
-        ]);
+      const [
+        respuestaPacientes,
+        respuestaMedicos,
+        respuestaCitas,
+      ] = await Promise.all([
+        api.get<RespuestaPaginada<PacienteAPI>>(
+          "/pacientes",
+          { params: { pagina: 1, limite: 100 } }
+        ),
+        api.get<MedicoAPI[]>("/medicos"),
+        api.get<CitaAPI[]>("/citas"),
+      ]);
 
-      const pacientes = respuestaPacientes.data;
-      const medicos = respuestaMedicos.data;
       const citas = respuestaCitas.data;
 
-      const citasHoy = citas.filter(
-        (cita) =>
-          cita.estado === "PROGRAMADA" && esHoy(cita.fechaHora)
-      ).length;
-
-      const consultasPendientes = citas.filter(
-        (cita) => cita.estado === "PROGRAMADA"
-      ).length;
-
       setDatos({
-        pacientes: pacientes.length,
-        medicos: medicos.length,
-        citasHoy,
-        consultasPendientes,
+        pacientes: respuestaPacientes.data.total,
+        medicos: respuestaMedicos.data.length,
+        citasHoy: citas.filter(
+          (cita) =>
+            cita.estado === "PROGRAMADA" &&
+            esHoy(cita.fechaHora)
+        ).length,
+        consultasPendientes: citas.filter(
+          (cita) => cita.estado === "PROGRAMADA"
+        ).length,
       });
-    } catch {
+    } catch (err: unknown) {
       setDatos(null);
-      setError(
-        "No se pudieron cargar las métricas. Verifica la conexión con el servidor."
-      );
+      setError(extraerMensajeError(err));
     } finally {
       setCargando(false);
     }
@@ -132,7 +124,6 @@ export default function PaginaDashboard() {
 
   return (
     <main className="min-h-screen bg-slate-50">
-      {/* Alerta de mantenimiento */}
       {mantenimiento && (
         <div
           role="alert"
@@ -143,7 +134,6 @@ export default function PaginaDashboard() {
         </div>
       )}
 
-      {/* Encabezado del Dashboard */}
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -160,21 +150,26 @@ export default function PaginaDashboard() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3">
             <Link
               to="/pacientes"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+              className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
             >
               Ver Pacientes →
             </Link>
 
-            <StatusBadge activo={!mantenimiento} />
+            <Link
+              to="/reportes"
+              className="rounded-xl border border-blue-200 px-5 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-50"
+            >
+              Ver reportes completos →
+            </Link>
 
-                      </div>
+            <StatusBadge activo={!mantenimiento} />
+          </div>
         </div>
       </header>
 
-      {/* Sección de métricas */}
       <section className="mx-auto max-w-7xl px-6 py-8">
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -189,7 +184,9 @@ export default function PaginaDashboard() {
 
           <button
             type="button"
-            onClick={() => setMantenimiento((prev) => !prev)}
+            onClick={() =>
+              setMantenimiento((prev) => !prev)
+            }
             className={`rounded-xl px-5 py-3 font-semibold text-white transition ${
               mantenimiento
                 ? "bg-emerald-600 hover:bg-emerald-700"
@@ -203,9 +200,10 @@ export default function PaginaDashboard() {
         </div>
 
         {cargando && (
-          <p role="status" className="rounded-xl bg-white p-6 text-slate-600">
-            Cargando métricas desde el servidor...
-          </p>
+          <div
+            role="status"
+            className="h-32 animate-pulse rounded-xl bg-slate-200"
+          />
         )}
 
         {!cargando && error && (
@@ -218,7 +216,7 @@ export default function PaginaDashboard() {
             <button
               type="button"
               onClick={() => void cargarDatos()}
-              className="mt-4 rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700"
+              className="mt-4 rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white"
             >
               Reintentar
             </button>
@@ -228,7 +226,10 @@ export default function PaginaDashboard() {
         {!cargando && !error && datos && (
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
             {metricas.map((metrica) => (
-              <MetricCard key={metrica.id} metrica={metrica} />
+              <MetricCard
+                key={metrica.id}
+                metrica={metrica}
+              />
             ))}
           </div>
         )}
@@ -240,9 +241,9 @@ export default function PaginaDashboard() {
 
           <p className="mt-2 text-sm text-slate-600">
             {mantenimiento
-              ? "El mantenimiento está activado. Puedes desactivarlo con el botón superior."
+              ? "El mantenimiento está activado."
               : error
-                ? "No se pudo verificar la conexión con los datos de la clínica."
+                ? "No se pudieron cargar los datos."
                 : cargando
                   ? "Consultando información del servidor..."
                   : "Las métricas se cargaron correctamente desde el servidor."}
