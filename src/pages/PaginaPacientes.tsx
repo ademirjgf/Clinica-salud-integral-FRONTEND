@@ -1,45 +1,91 @@
-
 import { useCallback, useEffect, useState } from "react";
-import type { FormEvent } from "react";
-import axios from "axios";
 
-import { api } from "../lib/axios";
-import type {
-  CrearPacienteAPI,
-  PacienteAPI,
-} from "../types/pacienteApi";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import toast from "react-hot-toast";
+
+import * as pacientesService from "../services/pacientes";
+import { extraerMensajeError } from "../lib/errorHandler";
+
+import ModalConfirmacion from "../components/ModalConfirmacion";
+
+import type { PacienteAPI } from "../types/pacienteApi";
+
+// Esquema de validación con Zod
+const pacienteSchema = z.object({
+  nombre: z
+    .string()
+    .trim()
+    .min(1, "El nombre es obligatorio"),
+
+  apellido: z
+    .string()
+    .trim()
+    .min(1, "El apellido es obligatorio"),
+
+  email: z
+    .email("Ingresa un correo electrónico válido"),
+
+  fechaNacimiento: z
+    .string()
+    .min(1, "La fecha de nacimiento es obligatoria")
+    .refine((valor) => {
+      const fecha = new Date(`${valor}T00:00:00.000Z`);
+
+      if (Number.isNaN(fecha.getTime())) {
+        return false;
+      }
+
+      if (fecha.toISOString().slice(0, 10) !== valor) {
+        return false;
+      }
+
+      return fecha <= new Date();
+    }, "Ingresa una fecha de nacimiento válida y no futura"),
+});
+
+type FormularioPaciente = z.infer<typeof pacienteSchema>;
 
 export default function PaginaPacientes() {
-  // Datos reales del backend
+  // Estado de pacientes
   const [pacientes, setPacientes] = useState<PacienteAPI[]>([]);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState("");
-
-  // Búsqueda
   const [busqueda, setBusqueda] = useState("");
 
-  // Formulario
-  const [nombre, setNombre] = useState("");
-  const [apellido, setApellido] = useState("");
-  const [email, setEmail] = useState("");
-  const [fechaNacimiento, setFechaNacimiento] = useState("");
+  // Estados para eliminación
+  const [pacienteAEliminar, setPacienteAEliminar] =
+    useState<PacienteAPI | null>(null);
 
-  const [guardando, setGuardando] = useState(false);
-  const [errorFormulario, setErrorFormulario] = useState("");
-  const [mensajeExito, setMensajeExito] = useState("");
+  const [eliminando, setEliminando] = useState(false);
 
-  // Obtener pacientes desde PostgreSQL
+  // React Hook Form + Zod
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<FormularioPaciente>({
+    resolver: zodResolver(pacienteSchema),
+    defaultValues: {
+      nombre: "",
+      apellido: "",
+      email: "",
+      fechaNacimiento: "",
+    },
+  });
+
+  // Cargar pacientes desde la API
   const cargarPacientes = useCallback(async () => {
     setCargando(true);
     setErrorCarga("");
 
     try {
-      const respuesta = await api.get<PacienteAPI[]>("/pacientes");
+      const respuesta = await pacientesService.getAll();
       setPacientes(respuesta.data);
-    } catch {
-      setErrorCarga(
-        "No se pudieron cargar los pacientes desde el servidor."
-      );
+    } catch (error: unknown) {
+      setErrorCarga(extraerMensajeError(error));
     } finally {
       setCargando(false);
     }
@@ -49,7 +95,73 @@ export default function PaginaPacientes() {
     void cargarPacientes();
   }, [cargarPacientes]);
 
-  // Buscar por nombre, apellido o email
+  // Crear paciente real
+  async function agregarPaciente(datos: FormularioPaciente) {
+    try {
+      const respuesta = await pacientesService.create(datos);
+
+      setPacientes((anteriores) => [
+        ...anteriores,
+        respuesta.data,
+      ]);
+
+      toast.success("Paciente registrado");
+
+      reset();
+    } catch (error: unknown) {
+      toast.error(extraerMensajeError(error));
+    }
+  }
+
+  // Abrir modal de eliminación
+  function solicitarEliminacion(paciente: PacienteAPI) {
+    setPacienteAEliminar(paciente);
+  }
+
+  // Cerrar modal
+  function cancelarEliminacion() {
+    if (eliminando) {
+      return;
+    }
+
+    setPacienteAEliminar(null);
+  }
+
+  // Eliminar paciente en PostgreSQL
+  async function confirmarEliminacion() {
+    if (!pacienteAEliminar || eliminando) {
+      return;
+    }
+
+    const idPaciente = pacienteAEliminar.id;
+
+    setEliminando(true);
+
+    try {
+      // DELETE /pacientes/:id
+      await pacientesService.remove(idPaciente);
+
+      // Actualizar el estado local sin recargar
+      setPacientes((anteriores) =>
+        anteriores.filter(
+          (paciente) => paciente.id !== idPaciente
+        )
+      );
+
+      // Cerrar el modal
+      setPacienteAEliminar(null);
+
+      // Mostrar confirmación
+      toast.success("Paciente eliminado");
+    } catch (error: unknown) {
+      // Si falla, no modificamos la lista
+      toast.error(extraerMensajeError(error));
+    } finally {
+      setEliminando(false);
+    }
+  }
+
+  // Filtrar pacientes
   const pacientesFiltrados = pacientes.filter((paciente) => {
     const texto = busqueda.trim().toLowerCase();
 
@@ -59,92 +171,6 @@ export default function PaginaPacientes() {
 
     return contenido.includes(texto);
   });
-
-  // Registrar un paciente real
-  async function agregarPaciente(evento: FormEvent<HTMLFormElement>) {
-    evento.preventDefault();
-
-    setErrorFormulario("");
-    setMensajeExito("");
-
-    if (
-      !nombre.trim() ||
-      !apellido.trim() ||
-      !email.trim() ||
-      !fechaNacimiento
-    ) {
-      setErrorFormulario(
-        "Todos los campos son obligatorios."
-      );
-      return;
-    }
-
-    const fecha = new Date(`${fechaNacimiento}T12:00:00`);
-
-    if (
-      Number.isNaN(fecha.getTime()) ||
-      fechaNacimiento > new Date().toLocaleDateString("en-CA")
-    ) {
-      setErrorFormulario(
-        "Ingresa una fecha de nacimiento válida."
-      );
-      return;
-    }
-
-    const nuevoPaciente: CrearPacienteAPI = {
-      nombre: nombre.trim(),
-      apellido: apellido.trim(),
-      email: email.trim(),
-      fechaNacimiento,
-    };
-
-    setGuardando(true);
-
-    try {
-      await api.post<PacienteAPI>("/pacientes", nuevoPaciente);
-
-      // Limpiar formulario después de guardar
-      setNombre("");
-      setApellido("");
-      setEmail("");
-      setFechaNacimiento("");
-
-      setMensajeExito(
-        "Paciente registrado correctamente en PostgreSQL."
-      );
-
-      // Consultar nuevamente los datos reales
-      await cargarPacientes();
-    } catch (error: unknown) {
-      if (axios.isAxiosError(error)) {
-        const estado = error.response?.status;
-
-        if (estado === 409) {
-          setErrorFormulario(
-            "Ya existe un paciente con ese correo electrónico."
-          );
-        } else if (estado === 400) {
-          setErrorFormulario(
-            "Los datos enviados no son válidos. Revisa el formulario."
-          );
-        } else {
-          setErrorFormulario(
-            "No se pudo registrar el paciente. Inténtalo nuevamente."
-          );
-        }
-      } else {
-        setErrorFormulario(
-          "Ocurrió un error inesperado."
-        );
-      }
-    } finally {
-      setGuardando(false);
-    }
-  }
-
-  function limpiarFiltros() {
-    setBusqueda("");
-  }
 
   return (
     <main className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
@@ -186,7 +212,9 @@ export default function PaginaPacientes() {
               id="busqueda"
               type="search"
               value={busqueda}
-              onChange={(evento) => setBusqueda(evento.target.value)}
+              onChange={(evento) =>
+                setBusqueda(evento.target.value)
+              }
               placeholder="Buscar por nombre, apellido o correo..."
               className="w-full rounded-lg border border-gray-300 px-3 py-2"
             />
@@ -194,14 +222,14 @@ export default function PaginaPacientes() {
 
           <button
             type="button"
-            onClick={limpiarFiltros}
+            onClick={() => setBusqueda("")}
             className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
           >
             Limpiar filtros
           </button>
         </section>
 
-        {/* Formulario de registro */}
+        {/* Formulario */}
         <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
           <h2 className="mb-2 text-xl font-semibold text-gray-900">
             Registrar nuevo paciente
@@ -212,9 +240,11 @@ export default function PaginaPacientes() {
           </p>
 
           <form
-            onSubmit={(evento) => void agregarPaciente(evento)}
+            onSubmit={handleSubmit(agregarPaciente)}
             className="grid grid-cols-1 gap-4 sm:grid-cols-2"
+            noValidate
           >
+            {/* Nombre */}
             <div>
               <label
                 htmlFor="nombre"
@@ -225,15 +255,20 @@ export default function PaginaPacientes() {
 
               <input
                 id="nombre"
-                value={nombre}
-                onChange={(evento) => setNombre(evento.target.value)}
-                required
-                disabled={guardando}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                {...register("nombre")}
+                disabled={isSubmitting}
                 placeholder="Nombre"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2"
               />
+
+              {errors.nombre && (
+                <p role="alert" className="mt-1 text-sm text-red-600">
+                  {errors.nombre.message}
+                </p>
+              )}
             </div>
 
+            {/* Apellido */}
             <div>
               <label
                 htmlFor="apellido"
@@ -244,15 +279,20 @@ export default function PaginaPacientes() {
 
               <input
                 id="apellido"
-                value={apellido}
-                onChange={(evento) => setApellido(evento.target.value)}
-                required
-                disabled={guardando}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                {...register("apellido")}
+                disabled={isSubmitting}
                 placeholder="Apellido"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2"
               />
+
+              {errors.apellido && (
+                <p role="alert" className="mt-1 text-sm text-red-600">
+                  {errors.apellido.message}
+                </p>
+              )}
             </div>
 
+            {/* Email */}
             <div>
               <label
                 htmlFor="email"
@@ -264,15 +304,20 @@ export default function PaginaPacientes() {
               <input
                 id="email"
                 type="email"
-                value={email}
-                onChange={(evento) => setEmail(evento.target.value)}
-                required
-                disabled={guardando}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                {...register("email")}
+                disabled={isSubmitting}
                 placeholder="correo@ejemplo.com"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2"
               />
+
+              {errors.email && (
+                <p role="alert" className="mt-1 text-sm text-red-600">
+                  {errors.email.message}
+                </p>
+              )}
             </div>
 
+            {/* Fecha de nacimiento */}
             <div>
               <label
                 htmlFor="fechaNacimiento"
@@ -284,42 +329,26 @@ export default function PaginaPacientes() {
               <input
                 id="fechaNacimiento"
                 type="date"
-                value={fechaNacimiento}
-                onChange={(evento) =>
-                  setFechaNacimiento(evento.target.value)
-                }
                 max={new Date().toISOString().slice(0, 10)}
-                required
-                disabled={guardando}
+                {...register("fechaNacimiento")}
+                disabled={isSubmitting}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2"
               />
+
+              {errors.fechaNacimiento && (
+                <p role="alert" className="mt-1 text-sm text-red-600">
+                  {errors.fechaNacimiento.message}
+                </p>
+              )}
             </div>
-
-            {errorFormulario && (
-              <p
-                role="alert"
-                className="text-sm text-red-600 sm:col-span-2"
-              >
-                {errorFormulario}
-              </p>
-            )}
-
-            {mensajeExito && (
-              <p
-                role="status"
-                className="text-sm font-medium text-green-700 sm:col-span-2"
-              >
-                {mensajeExito}
-              </p>
-            )}
 
             <div className="sm:col-span-2">
               <button
                 type="submit"
-                disabled={guardando}
+                disabled={isSubmitting}
                 className="rounded-lg bg-blue-600 px-5 py-2 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {guardando
+                {isSubmitting
                   ? "Guardando paciente..."
                   : "Registrar paciente"}
               </button>
@@ -327,7 +356,7 @@ export default function PaginaPacientes() {
           </form>
         </section>
 
-        {/* Listado de pacientes */}
+        {/* Listado */}
         <section
           aria-label="Listado de pacientes"
           className="space-y-3"
@@ -348,7 +377,9 @@ export default function PaginaPacientes() {
               role="alert"
               className="rounded-xl border border-red-200 bg-red-50 p-6"
             >
-              <p className="text-red-700">{errorCarga}</p>
+              <p className="text-red-700">
+                {errorCarga}
+              </p>
 
               <button
                 type="button"
@@ -380,9 +411,22 @@ export default function PaginaPacientes() {
                     </p>
                   </div>
 
-                  <span className="self-start rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-                    ID: {paciente.id}
-                  </span>
+                  {/* Acciones */}
+                  <div className="flex items-center gap-3 self-start">
+                    <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                      ID: {paciente.id}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        solicitarEliminacion(paciente)
+                      }
+                      className="rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
                 </div>
               </article>
             ))
@@ -393,6 +437,20 @@ export default function PaginaPacientes() {
           )}
         </section>
       </div>
+
+      {/* Modal de confirmación */}
+      <ModalConfirmacion
+        abierto={pacienteAEliminar !== null}
+        titulo="Eliminar paciente"
+        mensaje={
+          pacienteAEliminar
+            ? `¿Estás seguro de que deseas eliminar a ${pacienteAEliminar.nombre} ${pacienteAEliminar.apellido}? Esta acción no se puede deshacer.`
+            : ""
+        }
+        cargando={eliminando}
+        onConfirmar={() => void confirmarEliminacion()}
+        onCancelar={cancelarEliminacion}
+      />
     </main>
   );
 }
