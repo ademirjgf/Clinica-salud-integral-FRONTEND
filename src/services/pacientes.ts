@@ -7,8 +7,23 @@ import type {
   ActualizarPacienteAPI,
 } from "../types/pacienteApi";
 
-export const getAll = () =>
-  api.get<PacienteAPI[]>("/pacientes");
+import type { RespuestaPaginada } from "../types/api";
+
+export const getAll = (
+  query?: string,
+  signal?: AbortSignal
+) =>
+  api.get<RespuestaPaginada<PacienteAPI>>(
+    "/pacientes",
+    {
+      params: {
+        query,
+        pagina: 1,
+        limite: 100,
+      },
+      signal,
+    }
+  );
 
 export const create = (data: CrearPacienteAPI) =>
   api.post<PacienteAPI>("/pacientes", data);
@@ -17,7 +32,10 @@ export const update = (
   id: number,
   data: ActualizarPacienteAPI
 ) =>
-  api.put<PacienteAPI>(`/pacientes/${id}`, data);
+  api.put<PacienteAPI>(
+    `/pacientes/${id}`,
+    data
+  );
 
 export const remove = (id: number) =>
   api.delete(`/pacientes/${id}`);
