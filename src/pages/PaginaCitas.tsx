@@ -1,7 +1,6 @@
 
 import {
   startTransition,
-  useCallback,
   useEffect,
   useOptimistic,
   useState,
@@ -9,13 +8,11 @@ import {
 
 import toast from "react-hot-toast";
 
-import * as citasService from "../services/citas";
+import { useCitasStore } from "../stores/citasStore";
+import { useFiltrosStore } from "../stores/filtrosStore";
 import { extraerMensajeError } from "../lib/errorHandler";
 
-import type {
-  CitaAPI,
-  EstadoCita,
-} from "../types/citaApi";
+import type { CitaAPI, EstadoCita } from "../types/citaApi";
 
 const estados: EstadoCita[] = [
   "PROGRAMADA",
@@ -24,10 +21,23 @@ const estados: EstadoCita[] = [
 ];
 
 export default function PaginaCitas() {
-  const [citas, setCitas] = useState<CitaAPI[]>([]);
-  const [cargando, setCargando] = useState(true);
-  const [errorCarga, setErrorCarga] = useState("");
-  const [actualizandoId, setActualizandoId] = useState<number | null>(null);
+  const citas = useCitasStore((s) => s.citas);
+  const cargando = useCitasStore((s) => s.cargando);
+  const errorCarga = useCitasStore((s) => s.error);
+  const cargarTodas = useCitasStore((s) => s.cargarTodas);
+  const actualizarEstado = useCitasStore(
+    (s) => s.actualizarEstado
+  );
+
+  const estadoFiltro = useFiltrosStore(
+    (s) => s.estadoCitaFiltro
+  );
+  const setEstadoFiltro = useFiltrosStore(
+    (s) => s.setEstadoCita
+  );
+
+  const [actualizandoId, setActualizandoId] =
+    useState<number | null>(null);
 
   const [citasOptimistas, actualizarOptimista] = useOptimistic(
     citas,
@@ -42,28 +52,14 @@ export default function PaginaCitas() {
       )
   );
 
-  const cargarCitas = useCallback(async () => {
-    setCargando(true);
-    setErrorCarga("");
-
-    try {
-      const respuesta = await citasService.getAll();
-      setCitas(respuesta.data);
-    } catch (error: unknown) {
-      setErrorCarga(extraerMensajeError(error));
-    } finally {
-      setCargando(false);
-    }
-  }, []);
-
   useEffect(() => {
-    void cargarCitas();
-  }, [cargarCitas]);
+    void cargarTodas().catch(() => {
+      // El error queda registrado en Zustand.
+    });
+  }, [cargarTodas]);
 
   function cambiarEstado(id: number, estado: EstadoCita) {
-    if (actualizandoId !== null) {
-      return;
-    }
+    if (actualizandoId !== null) return;
 
     setActualizandoId(id);
 
@@ -71,24 +67,9 @@ export default function PaginaCitas() {
       actualizarOptimista({ id, estado });
 
       try {
-        const respuesta = await citasService.updateEstado(id, {
-          estado,
-        });
-
-        // Confirmar el cambio real en el estado base
-        setCitas((anteriores) =>
-          anteriores.map((cita) =>
-            cita.id === id
-              ? { ...cita, ...respuesta.data }
-              : cita
-          )
-        );
-
+        await actualizarEstado(id, estado);
         toast.success("Estado de cita actualizado");
       } catch (error: unknown) {
-        // No se modifica el estado base.
-        // Al finalizar la transición, React descarta
-        // el cambio optimista y muestra el estado anterior.
         console.error(extraerMensajeError(error));
         toast.error("Cambio revertido");
       } finally {
@@ -96,6 +77,12 @@ export default function PaginaCitas() {
       }
     });
   }
+
+  const citasFiltradas = citasOptimistas.filter(
+    (cita) =>
+      estadoFiltro === "Todos" ||
+      cita.estado === estadoFiltro
+  );
 
   return (
     <main className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
@@ -114,6 +101,33 @@ export default function PaginaCitas() {
           </p>
         </header>
 
+        <section className="rounded-xl border border-gray-200 bg-white p-4">
+          <label
+            htmlFor="estadoFiltro"
+            className="mb-2 block text-sm font-medium text-gray-700"
+          >
+            Filtrar por estado
+          </label>
+
+          <select
+            id="estadoFiltro"
+            value={estadoFiltro}
+            onChange={(evento) =>
+              setEstadoFiltro(
+                evento.target.value as EstadoCita | "Todos"
+              )
+            }
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 sm:max-w-xs"
+          >
+            <option value="Todos">Todos</option>
+            {estados.map((estado) => (
+              <option key={estado} value={estado}>
+                {estado}
+              </option>
+            ))}
+          </select>
+        </section>
+
         {cargando ? (
           <p
             role="status"
@@ -130,22 +144,24 @@ export default function PaginaCitas() {
 
             <button
               type="button"
-              onClick={() => void cargarCitas()}
+              onClick={() =>
+                void cargarTodas().catch(() => {})
+              }
               className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-white"
             >
               Reintentar
             </button>
           </div>
-        ) : citasOptimistas.length === 0 ? (
+        ) : citasFiltradas.length === 0 ? (
           <p className="rounded-xl bg-white p-6 text-center text-gray-500">
-            No hay citas registradas.
+            No hay citas para el filtro seleccionado.
           </p>
         ) : (
           <section
             aria-label="Listado de citas"
             className="space-y-4"
           >
-            {citasOptimistas.map((cita) => (
+            {citasFiltradas.map((cita) => (
               <article
                 key={cita.id}
                 className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
