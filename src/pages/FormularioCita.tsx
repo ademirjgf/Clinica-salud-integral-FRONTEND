@@ -7,10 +7,11 @@ import { z } from "zod";
 import toast from "react-hot-toast";
 
 import { api } from "../lib/axios";
-import * as citasService from "../services/citas";
 import { extraerMensajeError } from "../lib/errorHandler";
 
-import type { PacienteAPI } from "../types/pacienteApi";
+import { usePacientesStore } from "../stores/pacientesStore";
+import { useCitasStore } from "../stores/citasStore";
+
 import type { CitaAPI } from "../types/citaApi";
 
 interface MedicoAPI {
@@ -33,38 +34,45 @@ function obtenerFechaLocal(): string {
   return `${anio}-${mes}-${dia}`;
 }
 
-const citaSchema = z.object({
-  pacienteId: z.string().min(1, "Selecciona un paciente"),
-  medicoId: z.string().min(1, "Selecciona un médico"),
-  fecha: z.string().min(1, "Selecciona una fecha"),
-  hora: z.string().min(1, "Selecciona una hora"),
-}).refine(
-  (datos) => {
-    if (!datos.fecha || !datos.hora) return true;
+const citaSchema = z
+  .object({
+    pacienteId: z.string().min(1, "Selecciona un paciente"),
+    medicoId: z.string().min(1, "Selecciona un médico"),
+    fecha: z.string().min(1, "Selecciona una fecha"),
+    hora: z.string().min(1, "Selecciona una hora"),
+  })
+  .refine(
+    (datos) => {
+      if (!datos.fecha || !datos.hora) return true;
 
-    const fechaHora = new Date(
-      `${datos.fecha}T${datos.hora}:00`
-    );
+      const fechaHora = new Date(
+        `${datos.fecha}T${datos.hora}:00`
+      );
 
-    return (
-      !Number.isNaN(fechaHora.getTime()) &&
-      fechaHora > new Date()
-    );
-  },
-  {
-    message: "La fecha y hora deben ser futuras",
-    path: ["fecha"],
-  }
-);
+      return (
+        !Number.isNaN(fechaHora.getTime()) &&
+        fechaHora > new Date()
+      );
+    },
+    {
+      message: "La fecha y hora deben ser futuras",
+      path: ["fecha"],
+    }
+  );
 
 type CitaFormData = z.infer<typeof citaSchema>;
 
 export default function FormularioCita() {
   const navigate = useNavigate();
 
-  const [pacientes, setPacientes] = useState<PacienteAPI[]>([]);
+  const pacientes = usePacientesStore((s) => s.pacientes);
+  const cargandoPacientes = usePacientesStore((s) => s.cargando);
+  const cargarPacientes = usePacientesStore((s) => s.cargar);
+
+  const agregarCita = useCitasStore((s) => s.agregarCita);
+
   const [medicos, setMedicos] = useState<MedicoAPI[]>([]);
-  const [cargando, setCargando] = useState(true);
+  const [cargandoMedicos, setCargandoMedicos] = useState(true);
   const [errorCarga, setErrorCarga] = useState("");
   const [citaConfirmada, setCitaConfirmada] =
     useState<CitaAPI | null>(null);
@@ -86,28 +94,26 @@ export default function FormularioCita() {
 
   useEffect(() => {
     async function cargarDatos() {
-      setCargando(true);
+      setCargandoMedicos(true);
       setErrorCarga("");
 
       try {
-        const [respuestaPacientes, respuestaMedicos] =
-          await Promise.all([
-            api.get<PacienteAPI[]>("/pacientes"),
-            api.get<MedicoAPI[]>("/medicos"),
-          ]);
-
-        setPacientes(respuestaPacientes.data);
-        setMedicos(respuestaMedicos.data);
+        await Promise.all([
+          cargarPacientes(),
+          api.get<MedicoAPI[]>("/medicos").then((respuesta) => {
+            setMedicos(respuesta.data);
+          }),
+        ]);
       } catch (error: unknown) {
         setErrorCarga(extraerMensajeError(error));
         toast.error("No se pudieron cargar los datos");
       } finally {
-        setCargando(false);
+        setCargandoMedicos(false);
       }
     }
 
     void cargarDatos();
-  }, []);
+  }, [cargarPacientes]);
 
   async function agendarCita(datos: CitaFormData) {
     try {
@@ -115,13 +121,13 @@ export default function FormularioCita() {
         `${datos.fecha}T${datos.hora}:00`
       ).toISOString();
 
-      const respuesta = await citasService.create({
+      const cita = await agregarCita({
         pacienteId: Number(datos.pacienteId),
         medicoId: Number(datos.medicoId),
         fechaHora,
       });
 
-      setCitaConfirmada(respuesta.data);
+      setCitaConfirmada(cita);
       toast.success("Cita agendada correctamente");
     } catch (error: unknown) {
       toast.error(extraerMensajeError(error));
@@ -150,8 +156,7 @@ export default function FormularioCita() {
           </h1>
 
           <p className="mb-5 text-sm text-gray-600">
-            La cita #{citaConfirmada.id} fue guardada en
-            PostgreSQL.
+            La cita #{citaConfirmada.id} fue guardada en PostgreSQL.
           </p>
 
           <div className="space-y-3 text-sm text-gray-700">
@@ -177,8 +182,7 @@ export default function FormularioCita() {
             </p>
 
             <p>
-              <strong>Estado:</strong>{" "}
-              {citaConfirmada.estado}
+              <strong>Estado:</strong> {citaConfirmada.estado}
             </p>
           </div>
 
@@ -245,7 +249,7 @@ export default function FormularioCita() {
             <select
               id="pacienteId"
               {...register("pacienteId")}
-              disabled={cargando || isSubmitting}
+              disabled={cargandoPacientes || isSubmitting}
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2"
             >
               <option value="">Selecciona un paciente</option>
@@ -275,18 +279,18 @@ export default function FormularioCita() {
             <select
               id="medicoId"
               {...register("medicoId")}
-              disabled={cargando || isSubmitting}
+              disabled={cargandoMedicos || isSubmitting}
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2"
             >
               <option value="">Selecciona un médico</option>
 
               {medicos.map((medico) => (
-              <option key={medico.id} value={medico.id}>
-              {medico.nombre} {medico.apellido}
-               {" — "}
-               {medico.especialidad.nombre}
-               </option>
-                  ))}
+                <option key={medico.id} value={medico.id}>
+                  {medico.nombre} {medico.apellido}
+                  {" — "}
+                  {medico.especialidad.nombre}
+                </option>
+              ))}
             </select>
 
             {errors.medicoId && (
@@ -357,12 +361,15 @@ export default function FormularioCita() {
 
             <button
               type="submit"
-              disabled={isSubmitting || cargando || !!errorCarga}
+              disabled={
+                isSubmitting ||
+                cargandoPacientes ||
+                cargandoMedicos ||
+                !!errorCarga
+              }
               className="rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {isSubmitting
-                ? "Agendando..."
-                : "Agendar cita"}
+              {isSubmitting ? "Agendando..." : "Agendar cita"}
             </button>
           </div>
         </form>
