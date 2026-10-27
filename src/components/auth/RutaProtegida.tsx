@@ -1,9 +1,15 @@
+
 import { Navigate, Outlet } from "react-router-dom";
+import { useAuthStore } from "../../stores/authStore";
 
 export default function RutaProtegida() {
-  const token = localStorage.getItem("token");
+  const isAuthenticated = useAuthStore(
+    (state) => state.isAuthenticated
+  );
 
-  if (!token) {
+  const token = useAuthStore((state) => state.token);
+
+  if (!isAuthenticated || !token) {
     return <Navigate to="/login" replace />;
   }
 

@@ -1,4 +1,6 @@
+
 import axios from "axios";
+import { useAuthStore } from "../stores/authStore";
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
@@ -6,7 +8,7 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
+  const token = useAuthStore.getState().token;
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -17,10 +19,21 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem("token");
-      window.location.href = "/login";
+  (error: unknown) => {
+    if (
+      axios.isAxiosError(error) &&
+      error.response?.status === 401
+    ) {
+      const { logout, isAuthenticated } =
+        useAuthStore.getState();
+
+      if (isAuthenticated) {
+        logout();
+      }
+
+      if (window.location.pathname !== "/login") {
+        window.location.replace("/login");
+      }
     }
 
     return Promise.reject(error);
