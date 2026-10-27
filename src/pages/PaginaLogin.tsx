@@ -1,37 +1,64 @@
-import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
-import { api } from "../lib/axios";
 
-interface RespuestaLogin {
-  token: string;
-}
+import { useState } from "react";
+import {
+  useForm,
+  type SubmitHandler,
+} from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Navigate, useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
+
+import {
+  loginSchema,
+  type LoginFormData,
+} from "../schemas/loginSchema";
+
+import { login } from "../services/auth";
+import { useAuthStore } from "../stores/authStore";
+import { extraerMensajeError } from "../lib/errorHandler";
 
 export default function PaginaLogin() {
   const navigate = useNavigate();
+  const setAuth = useAuthStore((state) => state.login);
+  const isAuthenticated = useAuthStore(
+    (state) => state.isAuthenticated
+  );
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [cargando, setCargando] = useState(false);
-  const [error, setError] = useState("");
 
-  async function manejarLogin(evento: FormEvent<HTMLFormElement>) {
-    evento.preventDefault();
-    setError("");
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+    },
+  });
+
+  const onSubmit: SubmitHandler<LoginFormData> = async (
+    datos
+  ) => {
     setCargando(true);
 
     try {
-      const respuesta = await api.post<RespuestaLogin>("/auth/login", {
-        email,
-        password,
-      });
+      const { token, usuario } = await login(datos);
 
-      localStorage.setItem("token", respuesta.data.token);
-      navigate("/");
-    } catch {
-      setError("No se pudo iniciar sesión. Verifica tus credenciales.");
+      setAuth(token, usuario);
+      toast.success("¡Bienvenido!");
+
+      navigate("/", { replace: true });
+    } catch (err: unknown) {
+      toast.error(extraerMensajeError(err));
     } finally {
       setCargando(false);
     }
+  };
+
+  if (isAuthenticated) {
+    return <Navigate to="/" replace />;
   }
 
   return (
@@ -45,7 +72,11 @@ export default function PaginaLogin() {
           Iniciar sesión
         </p>
 
-        <form onSubmit={manejarLogin} className="space-y-4">
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          noValidate
+          className="space-y-4"
+        >
           <div>
             <label
               htmlFor="email"
@@ -57,13 +88,29 @@ export default function PaginaLogin() {
             <input
               id="email"
               type="email"
-              value={email}
-              onChange={(evento) => setEmail(evento.target.value)}
-              required
               autoComplete="username"
-              className="w-full rounded-lg border border-slate-300 p-3"
               placeholder="recepcion@clinica.com"
+              aria-invalid={Boolean(errors.email)}
+              aria-describedby={
+                errors.email ? "email-error" : undefined
+              }
+              {...register("email")}
+              className={`w-full rounded-lg border p-3 outline-none focus:ring-2 focus:ring-blue-500 ${
+                errors.email
+                  ? "border-red-500"
+                  : "border-slate-300"
+              }`}
             />
+
+            {errors.email && (
+              <p
+                id="email-error"
+                role="alert"
+                className="mt-1 text-sm text-red-600"
+              >
+                {errors.email.message}
+              </p>
+            )}
           </div>
 
           <div>
@@ -77,25 +124,37 @@ export default function PaginaLogin() {
             <input
               id="password"
               type="password"
-              value={password}
-              onChange={(evento) => setPassword(evento.target.value)}
-              required
               autoComplete="current-password"
-              className="w-full rounded-lg border border-slate-300 p-3"
               placeholder="Ingresa tu contraseña"
+              aria-invalid={Boolean(errors.password)}
+              aria-describedby={
+                errors.password
+                  ? "password-error"
+                  : undefined
+              }
+              {...register("password")}
+              className={`w-full rounded-lg border p-3 outline-none focus:ring-2 focus:ring-blue-500 ${
+                errors.password
+                  ? "border-red-500"
+                  : "border-slate-300"
+              }`}
             />
-          </div>
 
-          {error && (
-            <p role="alert" className="text-sm text-red-600">
-              {error}
-            </p>
-          )}
+            {errors.password && (
+              <p
+                id="password-error"
+                role="alert"
+                className="mt-1 text-sm text-red-600"
+              >
+                {errors.password.message}
+              </p>
+            )}
+          </div>
 
           <button
             type="submit"
             disabled={cargando}
-            className="w-full rounded-lg bg-blue-600 p-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            className="w-full rounded-lg bg-blue-600 p-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {cargando ? "Ingresando..." : "Ingresar"}
           </button>
