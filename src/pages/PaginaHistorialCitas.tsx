@@ -11,6 +11,11 @@ import {
 import type { CitaAPI } from "../types/citaApi";
 import type { RespuestaPaginada } from "../types/api";
 
+import SkeletonCitaRow from "../shared/components/ui/SkeletonCitaRow";
+
+import EstadoVacio from "../shared/components/ui/EstadoVacio";
+import AlertaBanner from "../shared/components/ui/AlertaBanner";
+
 const ESTADOS: EstadoFiltroHistorial[] = [
   "Todos",
   "Programada",
@@ -25,31 +30,7 @@ const DATOS_INICIALES: RespuestaPaginada<CitaAPI> = {
   totalPaginas: 0,
 };
 
-function SkeletonCitas() {
-  return (
-    <div
-      aria-label="Cargando historial de citas"
-      role="status"
-      className="space-y-3"
-    >
-      {Array.from({ length: 10 }, (_, index) => (
-        <div
-          key={index}
-          className="flex min-h-20 animate-pulse items-center gap-4 rounded-lg border border-gray-200 bg-white p-4"
-        >
-          <div className="h-10 w-10 shrink-0 rounded-lg bg-gray-200" />
 
-          <div className="flex-1 space-y-2">
-            <div className="h-4 w-2/3 rounded bg-gray-200" />
-            <div className="h-3 w-1/3 rounded bg-gray-200" />
-          </div>
-
-          <div className="hidden h-6 w-24 rounded-full bg-gray-200 sm:block" />
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function obtenerPagina(valor: string | null): number {
   if (!valor) return 1;
@@ -200,18 +181,35 @@ export default function PaginaHistorialCitas() {
       </div>
 
       {cargando ? (
-        <SkeletonCitas />
+  <div
+    role="status"
+    aria-label="Cargando historial de citas"
+    className="space-y-3"
+  >
+    {Array.from({ length: 10 }, (_, index) => (
+      <SkeletonCitaRow key={index} />
+    ))}
+  </div>
       ) : error ? (
-        <div
-          role="alert"
-          className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700"
-        >
-          {error}
-        </div>
-      ) : respuesta.data.length === 0 ? (
-        <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-gray-500">
-          No hay citas para los filtros seleccionados.
-        </div>
+  <AlertaBanner
+    tipo="error"
+    mensaje={error}
+  />
+      
+) : respuesta.data.length === 0 ? (
+  <EstadoVacio
+    titulo="No hay citas registradas"
+    descripcion="No existen citas para el estado seleccionado."
+    accion={
+      estado !== "Todos"
+        ? {
+            label: "Mostrar todos los estados",
+            onClick: () => cambiarEstado("Todos"),
+          }
+        : undefined
+    }
+  />
+
       ) : (
         <div className="space-y-3">
           {respuesta.data.map((cita) => (

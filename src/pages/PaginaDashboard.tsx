@@ -5,12 +5,15 @@ import { Link } from "react-router-dom";
 import { api } from "../lib/axios";
 import { extraerMensajeError } from "../lib/errorHandler";
 import MetricCard from "../components/MetricCard";
+import AlertaBanner from "../shared/components/ui/AlertaBanner";
 import StatusBadge from "../components/StatusBadge";
 
 import type { Metrica } from "../types";
 import type { CitaAPI } from "../types/citaApi";
 import type { PacienteAPI } from "../types/pacienteApi";
 import type { RespuestaPaginada } from "../types/api";
+
+import SkeletonMetricCard from "../shared/components/ui/SkeletonMetricCard";
 
 interface MedicoAPI {
   id: number;
@@ -199,29 +202,27 @@ export default function PaginaDashboard() {
           </button>
         </div>
 
-        {cargando && (
-          <div
-            role="status"
-            className="h-32 animate-pulse rounded-xl bg-slate-200"
-          />
-        )}
+       {cargando && (
+  <div
+    role="status"
+    aria-label="Cargando métricas"
+    className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4"
+  >
+    {Array.from({ length: 4 }, (_, index) => (
+      <SkeletonMetricCard key={index} />
+    ))}
+  </div>
+)}
 
-        {!cargando && error && (
-          <div
-            role="alert"
-            className="rounded-xl border border-red-200 bg-red-50 p-6"
-          >
-            <p className="text-red-700">{error}</p>
+        
+{!cargando && error && (
+  <AlertaBanner
+    tipo="error"
+    mensaje={error}
+    onReintentar={() => void cargarDatos()}
+  />
+)}
 
-            <button
-              type="button"
-              onClick={() => void cargarDatos()}
-              className="mt-4 rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white"
-            >
-              Reintentar
-            </button>
-          </div>
-        )}
 
         {!cargando && !error && datos && (
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">

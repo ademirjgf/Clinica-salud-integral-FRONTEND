@@ -1,11 +1,13 @@
 
-import { useEffect } from "react";
+import { useEffect, useId } from "react";
+import Spinner from "./Spinner";
 
 interface ModalConfirmacionProps {
   abierto: boolean;
   titulo: string;
   mensaje: string;
-  cargando: boolean;
+  cargando?: boolean;
+  textoConfirmar?: string;
   onConfirmar: () => void;
   onCancelar: () => void;
 }
@@ -14,10 +16,14 @@ export default function ModalConfirmacion({
   abierto,
   titulo,
   mensaje,
-  cargando,
+  cargando = false,
+  textoConfirmar = "Confirmar",
   onConfirmar,
   onCancelar,
 }: ModalConfirmacionProps) {
+  const tituloId = useId();
+  const mensajeId = useId();
+
   useEffect(() => {
     if (!abierto) return;
 
@@ -51,19 +57,19 @@ export default function ModalConfirmacion({
       <section
         role="alertdialog"
         aria-modal="true"
-        aria-labelledby="modal-titulo"
-        aria-describedby="modal-mensaje"
+        aria-labelledby={tituloId}
+        aria-describedby={mensajeId}
         className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
       >
         <h2
-          id="modal-titulo"
+          id={tituloId}
           className="text-xl font-bold text-gray-900"
         >
           {titulo}
         </h2>
 
         <p
-          id="modal-mensaje"
+          id={mensajeId}
           className="mt-3 text-sm text-gray-600"
         >
           {mensaje}
@@ -83,12 +89,14 @@ export default function ModalConfirmacion({
             type="button"
             onClick={onConfirmar}
             disabled={cargando}
-            className="rounded-lg bg-red-600 px-4 py-2 font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {cargando ? "Eliminando..." : "Eliminar"}
+            {cargando && <Spinner />}
+            {cargando ? "Procesando..." : textoConfirmar}
           </button>
         </div>
       </section>
     </div>
   );
 }
+
