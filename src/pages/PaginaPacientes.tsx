@@ -10,9 +10,17 @@ import { useFiltrosStore } from "../stores/filtrosStore";
 import { useDebounce } from "../hooks/useDebounce";
 import { extraerMensajeError } from "../lib/errorHandler";
 
-import ModalConfirmacion from "../components/ModalConfirmacion";
+import ModalConfirmacion from "../shared/components/ui/ModalConfirmacion";
+
+import AlertaBanner from "../shared/components/ui/AlertaBanner";
+
+import EstadoVacio from "../shared/components/ui/EstadoVacio";
+
+import Spinner from "../shared/components/ui/Spinner";
 
 import type { PacienteAPI } from "../types/pacienteApi";
+
+import SkeletonPacienteRow from "../shared/components/ui/SkeletonPacienteRow";
 
 // Validación del formulario
 const pacienteSchema = z.object({
@@ -216,15 +224,13 @@ export default function PaginaPacientes() {
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-12 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
               />
 
-              {buscando && (
-                <div
-                  role="status"
-                  aria-label="Buscando pacientes"
-                  className="pointer-events-none absolute inset-y-0 right-4 flex items-center"
-                >
-                  <span className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
-                </div>
-              )}
+              
+{buscando && (
+  <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center">
+    <Spinner />
+  </div>
+)}
+
             </div>
 
             <p className="mt-2 text-xs text-gray-500">
@@ -243,8 +249,10 @@ export default function PaginaPacientes() {
         </section>
 
         {/* Formulario */}
-        <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
-          <h2 className="mb-2 text-xl font-semibold text-gray-900">
+<section
+  id="formulario-paciente"
+  className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6"
+>          <h2 className="mb-2 text-xl font-semibold text-gray-900">
             Registrar nuevo paciente
           </h2>
 
@@ -391,33 +399,25 @@ export default function PaginaPacientes() {
           </h2>
 
           {buscando ? (
-            <p
-              role="status"
-              className="rounded-xl bg-white p-6 text-center text-gray-600"
-            >
-              Buscando pacientes...
-            </p>
-          ) : errorCarga ? (
-            <div
-              role="alert"
-              className="rounded-xl border border-red-200 bg-red-50 p-6"
-            >
-              <p className="text-red-700">
-                {errorCarga}
-              </p>
+  <div
+    role="status"
+    aria-label="Buscando pacientes"
+    className="space-y-3"
+  >
+    {Array.from({ length: 5 }, (_, index) => (
+      <SkeletonPacienteRow key={index} />
+    ))}
+  </div>
+         
+) : errorCarga ? (
+  <AlertaBanner
+    tipo="error"
+    mensaje={errorCarga}
+    onReintentar={() => {
+      void cargar(busquedaDebounced).catch(() => {});
+    }}
+  />
 
-              <button
-                type="button"
-                onClick={() =>
-                  void cargar(busquedaDebounced).catch(
-                    () => {}
-                  )
-                }
-                className="mt-4 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white"
-              >
-                Reintentar
-              </button>
-            </div>
           ) : pacientesFiltrados.length > 0 ? (
             pacientesFiltrados.map((paciente) => (
               <article
@@ -462,29 +462,58 @@ export default function PaginaPacientes() {
                 </div>
               </article>
             ))
-          ) : (
-            <p className="rounded-xl border border-gray-200 bg-white p-6 text-center text-sm text-gray-500">
-              No se encontraron pacientes.
-            </p>
-          )}
+          
+) : (
+  <EstadoVacio
+    titulo={
+      busqueda
+        ? "No se encontraron pacientes"
+        : "No hay pacientes registrados"
+    }
+    descripcion={
+      busqueda
+        ? "Prueba con otro nombre, apellido o correo electrónico."
+        : "Registra el primer paciente utilizando el formulario superior."
+    }
+    accion={
+      busqueda
+        ? {
+            label: "Limpiar búsqueda",
+            onClick: resetFiltros,
+          }
+        : {
+            label: "Ir al formulario",
+            onClick: () => {
+              document
+                .getElementById("formulario-paciente")
+                ?.scrollIntoView({ behavior: "smooth" });
+            },
+          }
+    }
+  />
+)}
+
         </section>
       </div>
 
       {/* Modal de eliminación */}
-      <ModalConfirmacion
-        abierto={pacienteAEliminar !== null}
-        titulo="Eliminar paciente"
-        mensaje={
-          pacienteAEliminar
-            ? `¿Estás seguro de que deseas eliminar a ${pacienteAEliminar.nombre} ${pacienteAEliminar.apellido}? Esta acción no se puede deshacer.`
-            : ""
-        }
-        cargando={eliminando}
-        onConfirmar={() =>
-          void confirmarEliminacion()
-        }
-        onCancelar={cancelarEliminacion}
-      />
+      
+<ModalConfirmacion
+  abierto={pacienteAEliminar !== null}
+  titulo="Eliminar paciente"
+  mensaje={
+    pacienteAEliminar
+      ? `¿Estás seguro de que deseas eliminar a ${pacienteAEliminar.nombre} ${pacienteAEliminar.apellido}? Esta acción no se puede deshacer.`
+      : ""
+  }
+  cargando={eliminando}
+  textoConfirmar="Eliminar"
+  onConfirmar={() => {
+    void confirmarEliminacion();
+  }}
+  onCancelar={cancelarEliminacion}
+/>
+
     </main>
   );
 }

@@ -4,6 +4,9 @@ import { Route, Routes } from "react-router-dom";
 import Layout from "./layouts/Layout";
 import RutaProtegida from "./components/auth/RutaProtegida";
 
+import ErrorBoundary from "./shared/components/ErrorBoundary";
+import AlertaBanner from "./shared/components/ui/AlertaBanner";
+
 import PaginaDashboard from "./pages/PaginaDashboard";
 import PaginaPacientes from "./pages/PaginaPacientes";
 import PaginaDetallePaciente from "./pages/PaginaDetallePaciente";
@@ -19,46 +22,78 @@ import PaginaPerfil from "./pages/PaginaPerfil";
 export default function App() {
   return (
     <Routes>
+      {/* LOGIN - Ruta pública */}
       <Route path="/login" element={<PaginaLogin />} />
 
+      {/* Rutas protegidas por autenticación */}
       <Route element={<RutaProtegida />}>
         <Route element={<Layout />}>
+
+          {/* DASHBOARD */}
           <Route
             path="/"
-            element={<PaginaDashboard />}
+            element={
+              <ErrorBoundary
+                fallback={
+                  <AlertaBanner
+                    tipo="error"
+                    mensaje="Ocurrió un error al mostrar el Dashboard."
+                  />
+                }
+              >
+                <PaginaDashboard />
+              </ErrorBoundary>
+            }
           />
 
+          {/* PACIENTES */}
           <Route
             path="/pacientes"
-            element={<PaginaPacientes />}
+            element={
+              <ErrorBoundary
+                fallback={
+                  <AlertaBanner
+                    tipo="error"
+                    mensaje="Ocurrió un error al mostrar los pacientes."
+                  />
+                }
+              >
+                <PaginaPacientes />
+              </ErrorBoundary>
+            }
           />
 
+          {/* DETALLE DEL PACIENTE */}
           <Route
             path="/pacientes/:id"
             element={<PaginaDetallePaciente />}
           />
 
+          {/* CITAS AGENDADAS */}
           <Route
             path="/citas"
             element={<PaginaCitas />}
           />
 
+          {/* REGISTRAR NUEVA CITA */}
           <Route
             path="/citas/nueva"
             element={<FormularioCita />}
           />
 
+          {/* PERFIL */}
           <Route
             path="/perfil"
             element={<PaginaPerfil />}
           />
 
+          {/* SIN ACCESO */}
           <Route
             path="/sin-acceso"
             element={<PaginaSinAcceso />}
           />
 
-          {/* Día 4: historial de citas paginado */}
+          {/* HISTORIAL - Solo RECEPCIONISTA */}
           <Route
             element={
               <RutaProtegida
@@ -68,11 +103,22 @@ export default function App() {
           >
             <Route
               path="/historial"
-              element={<PaginaHistorialCitas />}
+              element={
+                <ErrorBoundary
+                  fallback={
+                    <AlertaBanner
+                      tipo="error"
+                      mensaje="Ocurrió un error al mostrar el historial de citas."
+                    />
+                  }
+                >
+                  <PaginaHistorialCitas />
+                </ErrorBoundary>
+              }
             />
           </Route>
 
-          {/* Reportes: acceso restringido */}
+          {/* REPORTES - Solo GERENCIA y ADMIN */}
           <Route
             element={
               <RutaProtegida
@@ -82,14 +128,27 @@ export default function App() {
           >
             <Route
               path="/reportes"
-              element={<PaginaReportes />}
+              element={
+                <ErrorBoundary
+                  fallback={
+                    <AlertaBanner
+                      tipo="error"
+                      mensaje="Ocurrió un error al mostrar los reportes."
+                    />
+                  }
+                >
+                  <PaginaReportes />
+                </ErrorBoundary>
+              }
             />
           </Route>
 
+          {/* RUTA NO ENCONTRADA */}
           <Route
             path="*"
             element={<PaginaNotFound />}
           />
+
         </Route>
       </Route>
     </Routes>

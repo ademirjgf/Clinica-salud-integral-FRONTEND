@@ -1,4 +1,6 @@
 
+import { useState } from "react";
+
 import {
   NavLink,
   Outlet,
@@ -7,8 +9,13 @@ import {
 
 import { useAuthStore } from "../stores/authStore";
 
+import ModalConfirmacion from "../shared/components/ui/ModalConfirmacion";
+
 export default function Layout() {
   const navigate = useNavigate();
+
+  const [modalCerrarSesion, setModalCerrarSesion] =
+    useState(false);
 
   const usuario = useAuthStore(
     (state) => state.usuario
@@ -30,6 +37,7 @@ export default function Layout() {
     }`;
 
   const handleLogout = () => {
+    setModalCerrarSesion(false);
     logout();
     navigate("/login", { replace: true });
   };
@@ -124,7 +132,7 @@ export default function Layout() {
 
           <button
             type="button"
-            onClick={handleLogout}
+            onClick={() => setModalCerrarSesion(true)}
             className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50"
           >
             Cerrar sesión
@@ -135,6 +143,15 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      <ModalConfirmacion
+        abierto={modalCerrarSesion}
+        titulo="Cerrar sesión"
+        mensaje="¿Estás seguro de que deseas cerrar tu sesión?"
+        textoConfirmar="Cerrar sesión"
+        onConfirmar={handleLogout}
+        onCancelar={() => setModalCerrarSesion(false)}
+      />
     </div>
   );
 }
