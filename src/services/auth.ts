@@ -2,13 +2,18 @@
 import { api } from "../lib/axios";
 import type { LoginFormData } from "../schemas/loginSchema";
 
+export interface Usuario {
+  id: number;
+  email: string;
+  rol: string;
+  nombre: string | null;
+  telefono: string | null;
+  foto: string | null;
+}
+
 export interface LoginResponse {
   token: string;
-  usuario: {
-    id: number;
-    email: string;
-    rol: string;
-  };
+  usuario: Usuario;
 }
 
 export async function login(
