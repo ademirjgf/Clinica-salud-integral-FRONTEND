@@ -1,54 +1,126 @@
-import { useState } from 'react';
-import MetricCard from '../components/MetricCard';
-import StatusBadge from '../components/StatusBadge';
-import type { Metrica } from '../types';
+
+import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+
+import { api } from "../lib/axios";
+import { extraerMensajeError } from "../lib/errorHandler";
+import MetricCard from "../components/MetricCard";
+import StatusBadge from "../components/StatusBadge";
+
+import type { Metrica } from "../types";
+import type { CitaAPI } from "../types/citaApi";
+import type { PacienteAPI } from "../types/pacienteApi";
+import type { RespuestaPaginada } from "../types/api";
+
+interface MedicoAPI {
+  id: number;
+}
+
+interface DatosDashboard {
+  pacientes: number;
+  medicos: number;
+  citasHoy: number;
+  consultasPendientes: number;
+}
+
+function esHoy(fechaISO: string): boolean {
+  const fecha = new Date(fechaISO);
+  const hoy = new Date();
+
+  return (
+    !Number.isNaN(fecha.getTime()) &&
+    fecha.getFullYear() === hoy.getFullYear() &&
+    fecha.getMonth() === hoy.getMonth() &&
+    fecha.getDate() === hoy.getDate()
+  );
+}
 
 export default function PaginaDashboard() {
-  const [pacientes, setPacientes] = useState(128);
   const [mantenimiento, setMantenimiento] = useState(false);
+  const [datos, setDatos] = useState<DatosDashboard | null>(null);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState("");
 
-  const incrementarPacientes = () => {
-    setPacientes((prev) => prev + 1);
-  };
+  const cargarDatos = useCallback(async () => {
+    setCargando(true);
+    setError("");
 
-  const disminuirPacientes = () => {
-    setPacientes((prev) => Math.max(0, prev - 1));
-  };
+    try {
+      const [
+        respuestaPacientes,
+        respuestaMedicos,
+        respuestaCitas,
+      ] = await Promise.all([
+        api.get<RespuestaPaginada<PacienteAPI>>(
+          "/pacientes",
+          { params: { pagina: 1, limite: 100 } }
+        ),
+        api.get<MedicoAPI[]>("/medicos"),
+        api.get<CitaAPI[]>("/citas"),
+      ]);
 
-  const metricas: Metrica[] = [
-    {
-      id: 'pacientes',
-      titulo: 'Pacientes',
-      valor: pacientes,
-      descripcion: 'Pacientes registrados',
-      tendencia: 'positiva',
-      icono: '👥',
-    },
-    {
-      id: 'citas',
-      titulo: 'Citas Hoy',
-      valor: 24,
-      descripcion: 'Citas programadas para hoy',
-      tendencia: 'neutra',
-      icono: '📅',
-    },
-    {
-      id: 'consultas',
-      titulo: 'Consultas Pendientes',
-      valor: 8,
-      descripcion: 'Consultas por atender',
-      tendencia: 'negativa',
-      icono: '🩺',
-    },
-    {
-      id: 'disponibilidad',
-      titulo: 'Disponibilidad',
-      valor: '92%',
-      descripcion: 'Disponibilidad de atención',
-      tendencia: 'positiva',
-      icono: '💚',
-    },
-  ];
+      const citas = respuestaCitas.data;
+
+      setDatos({
+        pacientes: respuestaPacientes.data.total,
+        medicos: respuestaMedicos.data.length,
+        citasHoy: citas.filter(
+          (cita) =>
+            cita.estado === "PROGRAMADA" &&
+            esHoy(cita.fechaHora)
+        ).length,
+        consultasPendientes: citas.filter(
+          (cita) => cita.estado === "PROGRAMADA"
+        ).length,
+      });
+    } catch (err: unknown) {
+      setDatos(null);
+      setError(extraerMensajeError(err));
+    } finally {
+      setCargando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void cargarDatos();
+  }, [cargarDatos]);
+
+  const metricas: Metrica[] = datos
+    ? [
+        {
+          id: "pacientes",
+          titulo: "Pacientes",
+          valor: datos.pacientes,
+          descripcion: "Pacientes registrados",
+          tendencia: "positiva",
+          icono: "👥",
+        },
+        {
+          id: "citas",
+          titulo: "Citas Hoy",
+          valor: datos.citasHoy,
+          descripcion: "Citas programadas para hoy",
+          tendencia: "neutra",
+          icono: "📅",
+        },
+        {
+          id: "consultas",
+          titulo: "Consultas Pendientes",
+          valor: datos.consultasPendientes,
+          descripcion: "Citas programadas por atender",
+          tendencia: "negativa",
+          icono: "🩺",
+        },
+        {
+          id: "medicos",
+          titulo: "Médicos",
+          valor: datos.medicos,
+          descripcion: "Médicos registrados",
+          tendencia: "positiva",
+          icono: "👨‍⚕️",
+        },
+      ]
+    : [];
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -78,7 +150,23 @@ export default function PaginaDashboard() {
             </p>
           </div>
 
-          <StatusBadge activo={!mantenimiento} />
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              to="/pacientes"
+              className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              Ver Pacientes →
+            </Link>
+
+            <Link
+              to="/reportes"
+              className="rounded-xl border border-blue-200 px-5 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-50"
+            >
+              Ver reportes completos →
+            </Link>
+
+            <StatusBadge activo={!mantenimiento} />
+          </div>
         </div>
       </header>
 
@@ -90,43 +178,61 @@ export default function PaginaDashboard() {
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              Indicadores principales de la clínica
+              Indicadores obtenidos del servidor
             </p>
           </div>
 
           <button
             type="button"
-            onClick={() => setMantenimiento((prev) => !prev)}
+            onClick={() =>
+              setMantenimiento((prev) => !prev)
+            }
             className={`rounded-xl px-5 py-3 font-semibold text-white transition ${
               mantenimiento
-                ? 'bg-emerald-600 hover:bg-emerald-700'
-                : 'bg-rose-600 hover:bg-rose-700'
+                ? "bg-emerald-600 hover:bg-emerald-700"
+                : "bg-rose-600 hover:bg-rose-700"
             }`}
           >
             {mantenimiento
-              ? 'Desactivar mantenimiento'
-              : 'Activar mantenimiento'}
+              ? "Desactivar mantenimiento"
+              : "Activar mantenimiento"}
           </button>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
-          {metricas.map((metrica) => (
-            <MetricCard
-              key={metrica.id}
-              metrica={metrica}
-              onIncrement={
-                metrica.id === 'pacientes'
-                  ? incrementarPacientes
-                  : undefined
-              }
-              onDecrement={
-                metrica.id === 'pacientes'
-                  ? disminuirPacientes
-                  : undefined
-              }
-            />
-          ))}
-        </div>
+        {cargando && (
+          <div
+            role="status"
+            className="h-32 animate-pulse rounded-xl bg-slate-200"
+          />
+        )}
+
+        {!cargando && error && (
+          <div
+            role="alert"
+            className="rounded-xl border border-red-200 bg-red-50 p-6"
+          >
+            <p className="text-red-700">{error}</p>
+
+            <button
+              type="button"
+              onClick={() => void cargarDatos()}
+              className="mt-4 rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white"
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
+
+        {!cargando && !error && datos && (
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
+            {metricas.map((metrica) => (
+              <MetricCard
+                key={metrica.id}
+                metrica={metrica}
+              />
+            ))}
+          </div>
+        )}
 
         <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="text-lg font-bold text-slate-800">
@@ -135,8 +241,12 @@ export default function PaginaDashboard() {
 
           <p className="mt-2 text-sm text-slate-600">
             {mantenimiento
-              ? 'El mantenimiento está activado. Puedes desactivarlo con el botón superior.'
-              : 'Todos los indicadores están disponibles. El sistema funciona con normalidad.'}
+              ? "El mantenimiento está activado."
+              : error
+                ? "No se pudieron cargar los datos."
+                : cargando
+                  ? "Consultando información del servidor..."
+                  : "Las métricas se cargaron correctamente desde el servidor."}
           </p>
         </div>
       </section>
