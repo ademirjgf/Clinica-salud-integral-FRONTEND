@@ -9,6 +9,7 @@ import PaginaPacientes from "./pages/PaginaPacientes";
 import PaginaDetallePaciente from "./pages/PaginaDetallePaciente";
 import FormularioCita from "./pages/FormularioCita";
 import PaginaCitas from "./pages/PaginaCitas";
+import PaginaHistorialCitas from "./pages/PaginaHistorialCitas";
 import PaginaReportes from "./pages/PaginaReportes";
 import PaginaNotFound from "./pages/PaginaNotFound";
 import PaginaLogin from "./pages/PaginaLogin";
@@ -22,7 +23,10 @@ export default function App() {
 
       <Route element={<RutaProtegida />}>
         <Route element={<Layout />}>
-          <Route path="/" element={<PaginaDashboard />} />
+          <Route
+            path="/"
+            element={<PaginaDashboard />}
+          />
 
           <Route
             path="/pacientes"
@@ -34,7 +38,10 @@ export default function App() {
             element={<PaginaDetallePaciente />}
           />
 
-          <Route path="/citas" element={<PaginaCitas />} />
+          <Route
+            path="/citas"
+            element={<PaginaCitas />}
+          />
 
           <Route
             path="/citas/nueva"
@@ -51,6 +58,21 @@ export default function App() {
             element={<PaginaSinAcceso />}
           />
 
+          {/* Día 4: historial de citas paginado */}
+          <Route
+            element={
+              <RutaProtegida
+                rolesPermitidos={["RECEPCIONISTA"]}
+              />
+            }
+          >
+            <Route
+              path="/historial"
+              element={<PaginaHistorialCitas />}
+            />
+          </Route>
+
+          {/* Reportes: acceso restringido */}
           <Route
             element={
               <RutaProtegida
@@ -64,7 +86,10 @@ export default function App() {
             />
           </Route>
 
-          <Route path="*" element={<PaginaNotFound />} />
+          <Route
+            path="*"
+            element={<PaginaNotFound />}
+          />
         </Route>
       </Route>
     </Routes>
