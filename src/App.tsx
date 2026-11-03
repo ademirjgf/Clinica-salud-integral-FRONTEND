@@ -13,21 +13,16 @@ import PaginaReportes from "./pages/PaginaReportes";
 import PaginaNotFound from "./pages/PaginaNotFound";
 import PaginaLogin from "./pages/PaginaLogin";
 import PaginaSinAcceso from "./pages/PaginaSinAcceso";
+import PaginaPerfil from "./pages/PaginaPerfil";
 
 export default function App() {
   return (
     <Routes>
-      <Route
-        path="/login"
-        element={<PaginaLogin />}
-      />
+      <Route path="/login" element={<PaginaLogin />} />
 
       <Route element={<RutaProtegida />}>
         <Route element={<Layout />}>
-          <Route
-            path="/"
-            element={<PaginaDashboard />}
-          />
+          <Route path="/" element={<PaginaDashboard />} />
 
           <Route
             path="/pacientes"
@@ -39,14 +34,16 @@ export default function App() {
             element={<PaginaDetallePaciente />}
           />
 
-          <Route
-            path="/citas"
-            element={<PaginaCitas />}
-          />
+          <Route path="/citas" element={<PaginaCitas />} />
 
           <Route
             path="/citas/nueva"
             element={<FormularioCita />}
+          />
+
+          <Route
+            path="/perfil"
+            element={<PaginaPerfil />}
           />
 
           <Route
@@ -67,10 +64,7 @@ export default function App() {
             />
           </Route>
 
-          <Route
-            path="*"
-            element={<PaginaNotFound />}
-          />
+          <Route path="*" element={<PaginaNotFound />} />
         </Route>
       </Route>
     </Routes>
