@@ -85,6 +85,17 @@ export default function Layout() {
             Nueva cita
           </NavLink>
 
+          {/* Día 4: historial de citas */}
+          {usuario?.rol === "RECEPCIONISTA" && (
+            <NavLink
+              to="/historial"
+              className={estiloEnlace}
+            >
+              <span aria-hidden="true">🕘</span>
+              Historial de citas
+            </NavLink>
+          )}
+
           <NavLink
             to="/reportes"
             className={estiloEnlace}

@@ -7,6 +7,21 @@ import type {
   ActualizarEstadoCitaAPI,
 } from "../types/citaApi";
 
+import type { RespuestaPaginada } from "../types/api";
+
+export type EstadoFiltroHistorial =
+  | "Todos"
+  | "Programada"
+  | "Completada"
+  | "Cancelada";
+
+export interface ParametrosHistorial {
+  pagina: number;
+  estado: EstadoFiltroHistorial;
+  signal?: AbortSignal;
+}
+
+// Listado existente: no modificar su comportamiento
 export const getAll = () =>
   api.get<CitaAPI[]>("/citas");
 
@@ -18,3 +33,20 @@ export const updateEstado = (
   data: ActualizarEstadoCitaAPI
 ) =>
   api.put<CitaAPI>(`/citas/${id}`, data);
+
+// Nuevo endpoint paginado
+export const getHistorial = ({
+  pagina,
+  estado,
+  signal,
+}: ParametrosHistorial) =>
+  api.get<RespuestaPaginada<CitaAPI>>(
+    "/citas/historial",
+    {
+      params: {
+        pagina,
+        estado,
+      },
+      signal,
+    }
+  );
