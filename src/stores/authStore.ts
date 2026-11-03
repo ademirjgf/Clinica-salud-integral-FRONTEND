@@ -5,9 +5,7 @@ import {
   persist,
 } from "zustand/middleware";
 
-import type { LoginResponse } from "../services/auth";
-
-type Usuario = LoginResponse["usuario"];
+import type { Usuario } from "../services/auth";
 
 interface AuthState {
   token: string | null;
@@ -15,6 +13,7 @@ interface AuthState {
   isAuthenticated: boolean;
 
   login: (token: string, usuario: Usuario) => void;
+  actualizarUsuario: (usuario: Usuario) => void;
   logout: () => void;
 }
 
@@ -31,6 +30,12 @@ export const useAuthStore = create<AuthState>()(
           usuario,
           isAuthenticated: true,
         }),
+
+      actualizarUsuario: (usuario) =>
+        set((state) => ({
+          ...state,
+          usuario,
+        })),
 
       logout: () =>
         set({
